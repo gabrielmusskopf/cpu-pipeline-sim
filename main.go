@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -13,12 +14,14 @@ var debug = true
 
 func Debug(format string, v ...any) {
 	if debug {
-		if len(v) > 0 {
-			log.Printf(format, v)
-		} else {
-			log.Printf(format)
-		}
+		log.Printf(format, v...)
 	}
+}
+
+type Pipeline struct {
+	PC           int
+	Consts       map[string]string
+	Instructions []*Instruction
 }
 
 type Register = [8]int
@@ -64,11 +67,29 @@ var registers = make([]Register, 0)
 var stagesCount = 5
 var stages []*Stage
 
-func readConsts(file *os.File) {
+func readInstructions(reader io.Reader) []*Instruction {
+	instructions := make([]*Instruction, 0)
+
+	scan := bufio.NewScanner(reader)
+	for scan.Scan() {
+		line := scan.Text()
+		if strings.Contains(line, "halt") {
+			break
+		}
+
+		instruction := parseInstruction(line)
+		instructions = append(instructions, instruction)
+		Debug("Parsed %v instruction\n", instruction)
+	}
+
+	return instructions
+}
+
+func readConsts(file io.Reader) map[string]string {
 	scan := bufio.NewScanner(file)
 
 	constsStarted := false
-	consts = make(map[string]string)
+	consts := make(map[string]string)
 
 	for scan.Scan() {
 		line := scan.Text()
@@ -77,9 +98,13 @@ func readConsts(file *os.File) {
 		}
 		if constsStarted {
 			lineParts := strings.Split(line, " ")
-			consts[lineParts[0]] = lineParts[len(lineParts)-1]
+			key := lineParts[0]
+			consts[key] = lineParts[len(lineParts)-1]
+			Debug("Parsed [%s: %s] constant\n", key, consts[key])
 		}
 	}
+
+	return consts
 }
 
 func printState() {
@@ -94,10 +119,22 @@ func printState() {
 }
 
 func parseInstruction(line string) *Instruction {
-	opcode := strings.Split(line, " ")
-	return &Instruction{
-		Opcode: Opcode(opcode[0]),
+	parts := strings.Split(line, " ")
+	i := &Instruction{
+		Opcode: Opcode(parts[0]),
 	}
+
+	if len(parts) > 1 {
+		i.Op1 = parts[1]
+	}
+	if len(parts) > 2 {
+		i.Op2 = parts[2]
+	}
+	if len(parts) > 3 {
+		i.Op3 = parts[3]
+	}
+
+	return i
 }
 
 func instructionFetch(in chan *Instruction) chan *Instruction {
@@ -230,20 +267,7 @@ func broadcast(v rune) {
 	}
 }
 
-func main() {
-	stages = make([]*Stage, 0)
-	for i := 0; i < stagesCount; i++ {
-		stages = append(stages, &Stage{UserChan: make(chan rune), IsActive: false})
-	}
-
-	file, err := os.Open("instrucoes.txt")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	readConsts(file)
-	file.Seek(0, io.SeekStart)
-
+func handleUserInput() {
 	go func() {
 		inputScan := bufio.NewReader(os.Stdin)
 
@@ -266,8 +290,34 @@ func main() {
 			}
 		}
 	}()
+}
 
-	instructionsChan := make(chan *Instruction, 512)
+func main() {
+	stages = make([]*Stage, 0)
+	for i := 0; i < stagesCount; i++ {
+		stages = append(stages, &Stage{UserChan: make(chan rune), IsActive: false})
+	}
+
+	file, err := os.Open("instrucoes.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	buf := &bytes.Buffer{}
+	tee := io.TeeReader(file, buf)
+	consts := readConsts(tee)
+	instructions := readInstructions(buf)
+
+	pipeline := &Pipeline{
+		Consts:       consts,
+		Instructions: instructions,
+		PC:           1,
+	}
+
+	handleUserInput()
+
+	instructionsChan := make(chan *Instruction, 1)
 
 	decodeChan := instructionFetch(instructionsChan)
 	executeChan := decodeInstruction(decodeChan)
@@ -275,14 +325,14 @@ func main() {
 	writeBackChan := memoryAccess(memAccessChan)
 	out := writeBack(writeBackChan)
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		instruction := parseInstruction(scanner.Text())
-		Debug("Parsed %v instruction\n", instruction)
+	for _, instruction := range pipeline.Instructions {
 		instructionsChan <- instruction
+		pipeline.PC++
 	}
 	Debug("All instructions sended")
 	close(instructionsChan)
+
+	Debug("Pipeline PC: %d\n", pipeline.PC)
 
 	for o := range out {
 		Debug("Instruction completed: %v\n", o)

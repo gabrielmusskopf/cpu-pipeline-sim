@@ -1,0 +1,8 @@
+addi R0 R1 neg1
+addi R0 R2 ten
+addi R0 R3 one
+noop
+done halt
+neg1 .fill -1
+ten .fill 10
+one .fill 1
