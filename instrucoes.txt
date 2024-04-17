@@ -1,0 +1,2 @@
+addi R0 R1 neg1
+outr R0 R2 ten
