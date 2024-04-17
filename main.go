@@ -9,6 +9,18 @@ import (
 	"strings"
 )
 
+var debug = true
+
+func Debug(format string, v ...any) {
+	if debug {
+		if len(v) > 0 {
+			log.Printf(format, v)
+		} else {
+			log.Printf(format)
+		}
+	}
+}
+
 type Register = [8]int
 
 type Opcode string
@@ -37,10 +49,20 @@ type Instruction struct {
 	Valid  bool
 }
 
+func (i Instruction) String() string {
+	return fmt.Sprintf("%s", i.Opcode)
+}
+
+type Stage struct {
+	UserChan        chan rune
+	CurrInstruction *Instruction
+	IsActive        bool
+}
+
 var consts map[string]string
 var registers = make([]Register, 0)
-var states = make([]*Instruction, 5)
-var userChan = make(chan rune)
+var stagesCount = 5
+var stages []*Stage
 
 func readConsts(file *os.File) {
 	scan := bufio.NewScanner(file)
@@ -61,17 +83,14 @@ func readConsts(file *os.File) {
 }
 
 func printState() {
-	for i, state := range states {
+	for i, stage := range stages {
 		opcode := "EMPTY"
-		if state.Opcode != "" {
-			opcode = string(state.Opcode)
+		if stage != nil && stage.CurrInstruction != nil && stage.CurrInstruction.Opcode != "" {
+			opcode = string(stage.CurrInstruction.Opcode)
 		}
 		fmt.Printf("[%d] %s\t", i, opcode)
 	}
 	fmt.Println()
-}
-
-func cycle() {
 }
 
 func parseInstruction(line string) *Instruction {
@@ -82,24 +101,25 @@ func parseInstruction(line string) *Instruction {
 }
 
 func instructionFetch(in chan *Instruction) chan *Instruction {
-	out := make(chan *Instruction)
-
+	s := stages[0]
+	out := make(chan *Instruction, 5)
 	go func() {
 		for instruction := range in {
-			fmt.Printf("Fetch recebeu uma instrução %v\n", instruction.Opcode)
-			states[0] = instruction
-			select {
-			case userInput := <-userChan:
-				switch userInput {
-				case 'q', 'Q':
-					os.Exit(0)
-				case 'k', 'K':
-					states[0] = nil
+			Debug("Instruction fetch recieved instruction %v\n", instruction)
+			s.CurrInstruction = instruction
+			s.IsActive = true
+			for {
+				select {
+				case <-s.UserChan:
+					Debug("Instruction fetch toggled")
+					s.CurrInstruction = nil
+					s.IsActive = false
 					out <- instruction
 				}
+				break
 			}
-			out <- instruction
 		}
+		Debug("Instruction fetch closing output")
 		close(out)
 	}()
 
@@ -107,20 +127,22 @@ func instructionFetch(in chan *Instruction) chan *Instruction {
 }
 
 func decodeInstruction(in chan *Instruction) chan *Instruction {
-	out := make(chan *Instruction)
+	s := stages[1]
+	out := make(chan *Instruction, 5)
 	go func() {
 		for instruction := range in {
-			fmt.Printf("Decode recebeu uma instrução: %v\n", instruction.Opcode)
-			states[1] = instruction
-			select {
-			case userInput := <-userChan:
-				switch userInput {
-				case 'q', 'Q':
-					os.Exit(0)
-				case 'k', 'K':
-					states[1] = nil
+			Debug("Decode instruction recieved instruction %v\n", instruction)
+			s.CurrInstruction = instruction
+			s.IsActive = true
+			for {
+				select {
+				case <-s.UserChan:
+					Debug("Decode instruction toggled")
+					s.CurrInstruction = nil
+					s.IsActive = false
 					out <- instruction
 				}
+				break
 			}
 		}
 		close(out)
@@ -129,20 +151,22 @@ func decodeInstruction(in chan *Instruction) chan *Instruction {
 }
 
 func executeAddCalc(in chan *Instruction) chan *Instruction {
-	out := make(chan *Instruction)
+	s := stages[2]
+	out := make(chan *Instruction, 5)
 	go func() {
 		for instruction := range in {
-			fmt.Printf("Execute Address Calc recebeu uma instrução: %v\n", instruction.Opcode)
-			states[2] = instruction
-			select {
-			case userInput := <-userChan:
-				switch userInput {
-				case 'q', 'Q':
-					os.Exit(0)
-				case 'k', 'K':
-					states[2] = nil
+			Debug("Execute Address Calculation recieved instruction %v\n", instruction)
+			s.CurrInstruction = instruction
+			s.IsActive = true
+			for {
+				select {
+				case <-s.UserChan:
+					Debug("Execute Address Calculation toggled")
+					s.CurrInstruction = nil
+					s.IsActive = false
 					out <- instruction
 				}
+				break
 			}
 		}
 		close(out)
@@ -151,20 +175,22 @@ func executeAddCalc(in chan *Instruction) chan *Instruction {
 }
 
 func memoryAccess(in chan *Instruction) chan *Instruction {
-	out := make(chan *Instruction)
+	s := stages[3]
+	out := make(chan *Instruction, 5)
 	go func() {
 		for instruction := range in {
-			fmt.Printf("Memory Access recebeu uma instrução: %v\n", instruction.Opcode)
-			states[3] = instruction
-			select {
-			case userInput := <-userChan:
-				switch userInput {
-				case 'q', 'Q':
-					os.Exit(0)
-				case 'k', 'K':
-					states[3] = nil
+			Debug("Memory Access recieved instruction %v\n", instruction)
+			s.CurrInstruction = instruction
+			s.IsActive = true
+			for {
+				select {
+				case <-s.UserChan:
+					Debug("Memory Access toggled")
+					s.CurrInstruction = nil
+					s.IsActive = false
 					out <- instruction
 				}
+				break
 			}
 		}
 		close(out)
@@ -172,29 +198,44 @@ func memoryAccess(in chan *Instruction) chan *Instruction {
 	return out
 }
 
-func writeBack(in chan *Instruction) chan *Instruction {
-	out := make(chan *Instruction)
+func writeBack(in chan *Instruction) <-chan *Instruction {
+	stage := stages[4]
+	out := make(chan *Instruction, 5)
 	go func() {
 		for instruction := range in {
-			fmt.Printf("Write Back recebeu uma instrução: %v\n", instruction.Opcode)
-			states[4] = instruction
-			select {
-			case userInput := <-userChan:
-				switch userInput {
-				case 'q', 'Q':
-					os.Exit(0)
-				case 'k', 'K':
-					states[4] = nil
+			Debug("Write Back recieved instruction %v\n", instruction)
+			stage.CurrInstruction = instruction
+			stage.IsActive = true
+			for {
+				select {
+				case <-stage.UserChan:
+					Debug("Write Back toggled")
+					stage.CurrInstruction = nil
+					stage.IsActive = false
 					out <- instruction
 				}
+				break
 			}
 		}
 		close(out)
 	}()
 	return out
+}
+
+func broadcast(v rune) {
+	for _, stage := range stages {
+		if stage.IsActive {
+			stage.UserChan <- v
+		}
+	}
 }
 
 func main() {
+	stages = make([]*Stage, 0)
+	for i := 0; i < stagesCount; i++ {
+		stages = append(stages, &Stage{UserChan: make(chan rune), IsActive: false})
+	}
+
 	file, err := os.Open("instrucoes.txt")
 	if err != nil {
 		log.Fatal(err)
@@ -203,7 +244,30 @@ func main() {
 	readConsts(file)
 	file.Seek(0, io.SeekStart)
 
-	instructionsChan := make(chan *Instruction)
+	go func() {
+		inputScan := bufio.NewReader(os.Stdin)
+
+		fmt.Println("Simulador arquitetura pipeline")
+		fmt.Println("Aperte V para ver os estágios, K para avançar o estágio, H para ajuda e Q para sair")
+		for {
+			char, _, err := inputScan.ReadRune()
+			if err != nil {
+				log.Fatal(err)
+			}
+			switch char {
+			case 'q', 'Q':
+				os.Exit(0)
+			case 'v', 'V':
+				printState()
+			case 'k', 'K':
+				broadcast(char)
+			case 'h', 'H':
+				fmt.Println("Aperte V para ver os estágios, K para avançar o estágio, H para ajuda e Q para sair")
+			}
+		}
+	}()
+
+	instructionsChan := make(chan *Instruction, 512)
 
 	decodeChan := instructionFetch(instructionsChan)
 	executeChan := decodeInstruction(decodeChan)
@@ -213,21 +277,14 @@ func main() {
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		instructionsChan <- parseInstruction(scanner.Text())
+		instruction := parseInstruction(scanner.Text())
+		Debug("Parsed %v instruction\n", instruction)
+		instructionsChan <- instruction
 	}
+	Debug("All instructions sended")
+	close(instructionsChan)
 
-	fmt.Printf("Instrução finalizada %v\n", <-out)
-	fmt.Printf("Instrução finalizada %v\n", <-out)
-
-    inputScan := bufio.NewReader(os.Stdin)
-
-    fmt.Println("Aperte K para avançar o estágio e Q para sair")
-    for {
-        char, _, err := inputScan.ReadRune()
-        if err != nil {
-            log.Fatal(err)
-        }
-        userChan<-char
-    }
-
+	for o := range out {
+		Debug("Instruction completed: %v\n", o)
+	}
 }
