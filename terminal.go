@@ -5,67 +5,91 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
 type Terminal struct {
-	AutoPlay bool
-	playChan chan rune
-	done     chan bool
-	ticker   *time.Ticker
+	play         bool
+	playDuration time.Duration
+	playChan     chan rune
+	done         chan bool
+	ticker       *time.Ticker
+}
+
+func help() {
+	fmt.Println("Simulador arquitetura pipeline")
+	fmt.Println("Instruções:")
+	fmt.Println("   v   ver os estágios")
+	fmt.Println("   k   avançar o estágio")
+	fmt.Println("   p, p <segundos>")
+	fmt.Println("       avançar os estágios automaticamente")
+	fmt.Println("   d   habilitar/desabilitar logs debug")
+	fmt.Println("   h   ajuda")
+	fmt.Println("   q   sair")
 }
 
 func (t *Terminal) HandleUserInput() {
 	go func() {
 		inputScan := bufio.NewReader(os.Stdin)
-
-		fmt.Println("Simulador arquitetura pipeline")
-		fmt.Println("Instruções:")
-		fmt.Println("   v   ver os estágios")
-		fmt.Println("   k   avançar o estágio")
-		fmt.Println("   p   avançar os estágios automaticamente")
-		fmt.Println("   d   habilitar/desabilitar logs debug")
-		fmt.Println("   h   ajuda")
-		fmt.Println("   q   sair")
+		help()
 		for {
-			char, _, err := inputScan.ReadRune()
+			input, err := inputScan.ReadString('\n')
 			if err != nil {
 				log.Fatal(err)
 			}
-			switch char {
-			case 'q', 'Q':
+			parts := strings.Split(input, " ")
+			for i, p := range parts {
+				parts[i] = strings.TrimSpace(p)
+			}
+
+			switch parts[0] {
+			case "q", "Q":
 				os.Exit(0)
-			case 'v', 'V':
+			case "v", "V":
 				printState()
-			case 'r', 'R':
+			case "r", "R":
 				printRegisters()
-			case 'd', 'D':
-				debug = !debug
-				var debugState string
-				if debug {
-					debugState = "habilitado"
-				} else {
-					debugState = "desabilitado"
+			case "d", "D":
+				toggleDebug()
+			case "p", "P":
+				t.playDuration = 2 * time.Second
+				if len(parts) > 1 {
+					d, err := time.ParseDuration(parts[1])
+					if err != nil {
+						fmt.Printf("ERROR: %s inválido! Formato deve ser valor e sufixo. Usando padrão: 2s\n", parts[1])
+					} else {
+						t.playDuration = d
+					}
 				}
-				fmt.Printf("Debug %s\n", debugState)
-			case 'p', 'P':
 				t.togglePlay()
-			case 'k', 'K':
-				Broadcast(char)
-			case 'h', 'H':
-				fmt.Println("Aperte V para ver os estágios, K para avançar o estágio, H para ajuda e Q para sair")
+			case "k", "K":
+				Broadcast('k')
+			case "h", "H":
+				help()
 			}
 		}
 	}()
 }
 
+func toggleDebug() {
+	debug = !debug
+	var debugState string
+	if debug {
+		debugState = "habilitado"
+	} else {
+		debugState = "desabilitado"
+	}
+	fmt.Printf("Debug %s\n", debugState)
+}
+
 func (t *Terminal) togglePlay() {
-	t.AutoPlay = !t.AutoPlay
-	if t.AutoPlay {
-		t.ticker = time.NewTicker(2 * time.Second)
+	t.play = !t.play
+	if t.play {
+		t.ticker = time.NewTicker(t.playDuration)
 		t.done = make(chan bool)
 		go func() {
-			fmt.Println("Start auto play")
+			fmt.Printf("Start auto play with %s\n", t.playDuration)
 			for {
 				select {
 				case <-t.done:
