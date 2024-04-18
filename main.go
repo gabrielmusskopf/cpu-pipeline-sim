@@ -252,7 +252,7 @@ func NewStage(name, nc string) *Stage {
 // in Program counter (PC)
 func instructionFetch(in chan int) chan string {
 	s := stages[0]
-	out := make(chan string, 5)
+	out := make(chan string)
 	go func() {
 		Debug("%s goroutine started and is waiting for messages\n", s.Name)
 		for pc := range in {
@@ -279,7 +279,7 @@ func instructionFetch(in chan int) chan string {
 // in Raw instrucion line channel
 func decodeInstruction(in chan string) chan *Instruction {
 	s := stages[1]
-	out := make(chan *Instruction, 5)
+	out := make(chan *Instruction)
 	go func() {
 		Debug("%s goroutine started and is waiting for messages\n", s.Name)
 		for raw := range in {
@@ -332,7 +332,7 @@ func parseInstruction(line string) *Instruction {
 // in Decoded instruction
 func executeAddCalc(in chan *Instruction) chan *Instruction {
 	s := stages[2]
-	out := make(chan *Instruction, 5)
+	out := make(chan *Instruction)
 	go func() {
 		Debug("%s goroutine started and is waiting for messages\n", s.Name)
 		for instruction := range in {
@@ -371,7 +371,7 @@ func executeAddCalc(in chan *Instruction) chan *Instruction {
 // in Instruction after execution complete channel
 func memoryAccess(in chan *Instruction) chan *Instruction {
 	s := stages[3]
-	out := make(chan *Instruction, 5)
+	out := make(chan *Instruction)
 	go func() {
 		Debug("%s goroutine started and is waiting for messages\n", s.Name)
 		for instruction := range in {
@@ -397,8 +397,7 @@ func memoryAccess(in chan *Instruction) chan *Instruction {
 // in Instruction after save
 func writeBack(in chan *Instruction) chan *Instruction {
 	stage := stages[4]
-	// Arbitrary for now. This can cause issues for extensive jumping, filling this channel
-	out := make(chan *Instruction, 256)
+	out := make(chan *Instruction)
 	go func() {
 		Debug("%s goroutine started and is waiting for messages\n", stage.Name)
 		for instruction := range in {
@@ -454,6 +453,12 @@ func main() {
 	writeBackChan := memoryAccess(memAccessChan)
 	out := writeBack(writeBackChan)
 
+	go func() {
+		for o := range out {
+			Debug("Instruction completed: %v\n", o)
+		}
+	}()
+
 	for pipeline.PC != pipeline.Lines {
 		pipeline.PC++
 		instructionsChan <- pipeline.PC
@@ -461,10 +466,6 @@ func main() {
 	}
 	Debug("All instructions sended")
 	close(instructionsChan)
-
-	for o := range out {
-		Debug("Instruction completed: %v\n", o)
-	}
 
 	fmt.Println("All instructions executed")
 }
