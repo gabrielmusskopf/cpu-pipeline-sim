@@ -41,7 +41,7 @@ func NewPipeline() *Pipeline {
 	}
 	pipeline := &Pipeline{
 		File: b,
-		PC:   1,
+		PC:   0,
 	}
 
 	pipeline.ParseFile()
@@ -260,6 +260,7 @@ func instructionFetch(in chan int) chan string {
 	s := stages[0]
 	out := make(chan string, 5)
 	go func() {
+		Debug("Fetch goroutine started and is waiting for messages\n")
 		for pc := range in {
 			Debug("Instruction fetch recieved PC %d\n", pc)
 			s.CurrPC = pc
@@ -268,13 +269,13 @@ func instructionFetch(in chan int) chan string {
 			for {
 				select {
 				case <-s.UserChan:
-					s.IsActive = false
 					out <- instruction
+					s.IsActive = false
 				}
 				break
 			}
 		}
-		Debug("Instruction fetch closing output")
+		Debug("Fetch will not recieve anything else\n")
 		close(out)
 	}()
 
@@ -286,6 +287,7 @@ func decodeInstruction(in chan string) chan *Instruction {
 	s := stages[1]
 	out := make(chan *Instruction, 5)
 	go func() {
+		Debug("Decode goroutine started and is waiting for messages\n")
 		for raw := range in {
 			Debug("Decode instruction recieved instruction %s\n", raw)
 			instruction := parseInstruction(raw)
@@ -294,13 +296,14 @@ func decodeInstruction(in chan string) chan *Instruction {
 			for {
 				select {
 				case <-s.UserChan:
+					out <- instruction
 					s.CurrInstruction = nil
 					s.IsActive = false
-					out <- instruction
 				}
 				break
 			}
 		}
+		Debug("Decode will not recieve anything else\n")
 		close(out)
 	}()
 	return out
@@ -337,28 +340,35 @@ func executeAddCalc(in chan *Instruction) chan *Instruction {
 	s := stages[2]
 	out := make(chan *Instruction, 5)
 	go func() {
+		Debug("Execute goroutine started and is waiting for messages\n")
 		for instruction := range in {
 			Debug("Execute Address Calculation recieved instruction %v\n", instruction)
 			s.CurrInstruction = instruction
 			s.IsActive = true
 
 			switch instruction.Opcode {
+			case HALT:
+				fmt.Println("HALT")
+				os.Exit(1)
 			case ADDI:
 				AddiOperation(instruction)
 			case ADD:
 				AddOperation(instruction)
+			case BEQ:
+				BeqOperation(instruction)
 			}
 
 			for {
 				select {
 				case <-s.UserChan:
+					out <- instruction
 					s.CurrInstruction = nil
 					s.IsActive = false
-					out <- instruction
 				}
 				break
 			}
 		}
+		Debug("Execute will not recieve anything else\n")
 		close(out)
 	}()
 	return out
@@ -369,6 +379,7 @@ func memoryAccess(in chan *Instruction) chan *Instruction {
 	s := stages[3]
 	out := make(chan *Instruction, 5)
 	go func() {
+		Debug("Memory Access goroutine started and is waiting for messages\n")
 		for instruction := range in {
 			Debug("Memory Access recieved instruction %v\n", instruction)
 			s.CurrInstruction = instruction
@@ -376,23 +387,26 @@ func memoryAccess(in chan *Instruction) chan *Instruction {
 			for {
 				select {
 				case <-s.UserChan:
+					out <- instruction
 					s.CurrInstruction = nil
 					s.IsActive = false
-					out <- instruction
 				}
 				break
 			}
 		}
+		Debug("Memory Access will not recieve anything else\n")
 		close(out)
 	}()
 	return out
 }
 
 // in Instruction after save
-func writeBack(in chan *Instruction) <-chan *Instruction {
+func writeBack(in chan *Instruction) chan *Instruction {
 	stage := stages[4]
-	out := make(chan *Instruction, 5)
+	// Arbitrary for now. This can cause issues for extensive jumping, filling this channel
+	out := make(chan *Instruction, 256)
 	go func() {
+		Debug("Write Back goroutine started and is waiting for messages\n")
 		for instruction := range in {
 			Debug("Write Back recieved instruction %v\n", instruction)
 			stage.CurrInstruction = instruction
@@ -475,17 +489,16 @@ func main() {
 	out := writeBack(writeBackChan)
 
 	for pipeline.PC != pipeline.Lines {
-		instructionsChan <- pipeline.PC
 		pipeline.PC++
+		instructionsChan <- pipeline.PC
+		Debug("Send instruction from PC %d\n", pipeline.PC)
 	}
 	Debug("All instructions sended")
 	close(instructionsChan)
-
-	Debug("Pipeline PC: %d\n", pipeline.PC+1)
 
 	for o := range out {
 		Debug("Instruction completed: %v\n", o)
 	}
 
-	fmt.Println("Todas as instruções foram executadas.")
+	fmt.Println("All instructions executed")
 }
