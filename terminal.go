@@ -15,7 +15,7 @@ func (t *Terminal) HandleUserInput() {
 		inputScan := bufio.NewReader(os.Stdin)
 
 		fmt.Println("Simulador arquitetura pipeline")
-		fmt.Println("Aperte V para ver os estágios, K para avançar o estágio, H para ajuda e Q para sair")
+		fmt.Println("Aperte V para ver os estágios, K para avançar o estágio, D para habilitar/desabilitar logs debug, H para ajuda e Q para sair")
 		for {
 			char, _, err := inputScan.ReadRune()
 			if err != nil {
@@ -28,6 +28,15 @@ func (t *Terminal) HandleUserInput() {
 				printState()
 			case 'r', 'R':
 				printRegisters()
+			case 'd', 'D':
+                debug = !debug
+                var debugState string
+                if debug {
+                    debugState = "habilitado"
+                } else {
+                    debugState = "desabilitado"
+                }
+                fmt.Printf("Debug %s\n", debugState)
 			case 'k', 'K':
 				Broadcast(char)
 			case 'h', 'H':
