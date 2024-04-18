@@ -238,50 +238,14 @@ type Stage struct {
 
 var stages [5]*Stage
 
-func divisionLine() {
-	for i := 0; i < 100; i++ {
-		fmt.Print("━")
+func NewStage(name string) *Stage {
+	return &Stage{
+		Name:     name,
+		UserChan: make(chan rune),
+		IsActive: false,
+		CurrPC:   0,
 	}
-	fmt.Println()
-}
-func printState() {
-	divisionLine()
-	for t, stage := range stages {
-		status := "EMPTY"
-		if stage != nil && stage.CurrInstruction != nil && stage.CurrInstruction.Opcode != "" {
-			status = stage.CurrInstruction.String()
-		}
-		if t == 0 { //fetch stage
-			status = fmt.Sprintf("PC=%d", stage.CurrPC)
-		}
 
-		fmt.Printf("[%d] %s\t", t, status)
-	}
-	fmt.Println()
-	divisionLine()
-}
-
-func printRegisters() {
-	nickFormat := "│R%02d│ "
-
-	for i := 0; i <= numRegisters; i++ {
-		fmt.Print("╭───╮ ")
-	}
-	fmt.Println()
-	for i := 0; i <= numRegisters; i++ {
-		fmt.Printf(nickFormat, i)
-	}
-	fmt.Println()
-	for i := 0; i <= numRegisters; i++ {
-		nick := fmt.Sprintf("R%d", i)
-		value := registers[nick]
-		fmt.Printf("│%2d │ ", value)
-	}
-	fmt.Println()
-	for i := 0; i <= numRegisters; i++ {
-		fmt.Print("╰───╯ ")
-	}
-	fmt.Println()
 }
 
 // in Program counter (PC)
@@ -464,53 +428,24 @@ func Broadcast(v rune) {
 	}
 }
 
-func handleUserInput() {
-	go func() {
-		inputScan := bufio.NewReader(os.Stdin)
-
-		fmt.Println("Simulador arquitetura pipeline")
-		fmt.Println("Aperte V para ver os estágios, K para avançar o estágio, H para ajuda e Q para sair")
-		for {
-			char, _, err := inputScan.ReadRune()
-			if err != nil {
-				log.Fatal(err)
-			}
-			switch char {
-			case 'q', 'Q':
-				os.Exit(0)
-			case 'v', 'V':
-				printState()
-			case 'r', 'R':
-				printRegisters()
-			case 'k', 'K':
-				broadcast(char)
-			case 'h', 'H':
-				fmt.Println("Aperte V para ver os estágios, K para avançar o estágio, H para ajuda e Q para sair")
-			}
-		}
-	}()
-}
-
 func main() {
-
 	registers = make(map[string]int8)
 	for i := 0; i <= numRegisters; i++ {
 		nick := fmt.Sprintf("R%d", i)
 		registers[nick] = 0
 	}
 
-	for i := 0; i < len(stages); i++ {
-		stages[i] = &Stage{
-			UserChan: make(chan rune),
-			IsActive: false,
-			CurrPC:   0,
-		}
-	}
+	stages[0] = NewStage("fet")
+	stages[1] = NewStage("dec")
+	stages[2] = NewStage("exe")
+	stages[3] = NewStage("mem")
+	stages[4] = NewStage("wrb")
 
-	handleUserInput()
+	term := &Terminal{}
+	term.HandleUserInput()
 
 	pipeline = NewPipeline()
-	instructionsChan := make(chan int, pipeline.Lines)
+	instructionsChan := make(chan int)
 
 	decodeChan := instructionFetch(instructionsChan)
 	executeChan := decodeInstruction(decodeChan)
