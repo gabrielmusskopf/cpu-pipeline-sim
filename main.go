@@ -91,6 +91,7 @@ const (
 	SUBI Opcode = "subi"
 	BEQ  Opcode = "beq"
 	J    Opcode = "j"
+	HALT Opcode = "halt"
 	NOOP Opcode = "noop"
 )
 
@@ -200,7 +201,35 @@ func AddOperation(i *Instruction) {
 	registers[op1Nick] = op2 + op3
 }
 
+func BeqOperation(i *Instruction) {
+	op1Nick := fmt.Sprintf("R%s", i.Op1)
+	op2Nick := fmt.Sprintf("R%s", i.Op2)
+
+	op1, ok := registers[op1Nick]
+	if !ok {
+		i.Valid = false
+		fmt.Printf("ERROR: Register %s does not exist\n", i.Op1)
+		return
+	}
+	op2, ok := registers[op2Nick]
+	if !ok {
+		i.Valid = false
+		fmt.Printf("ERROR: Register %s does not exist\n", i.Op1)
+		return
+	}
+	if op1 == op2 {
+		pc, ok := pipeline.Labels[i.Op3]
+		if !ok {
+			fmt.Printf("ERROR: Label %s does not exist\n", i.Op3)
+			return
+		}
+		Debug("Jumping to %d\n", pc)
+		pipeline.PC = pc
+	}
+}
+
 type Stage struct {
+	Name            string
 	UserChan        chan rune
 	CurrInstruction *Instruction
 	CurrPC          int
@@ -414,19 +443,20 @@ func writeBack(in chan *Instruction) chan *Instruction {
 			for {
 				select {
 				case <-stage.UserChan:
+					out <- instruction
 					stage.CurrInstruction = nil
 					stage.IsActive = false
-					out <- instruction
 				}
 				break
 			}
 		}
+		Debug("Write Back will not recieve anything else\n")
 		close(out)
 	}()
 	return out
 }
 
-func broadcast(v rune) {
+func Broadcast(v rune) {
 	for _, stage := range stages {
 		if stage.IsActive {
 			stage.UserChan <- v
