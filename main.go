@@ -26,6 +26,8 @@ type Pipeline struct {
 	PC     int
 	Labels map[string]int // Label: PC
 	Lines  int
+	In     chan int
+	Out    chan *Instruction
 }
 
 func NewPipeline() *Pipeline {
@@ -42,9 +44,22 @@ func NewPipeline() *Pipeline {
 	pipeline := &Pipeline{
 		File: b,
 		PC:   0,
+		In:   make(chan int),
 	}
 
 	pipeline.ParseFile()
+
+	stages[0] = NewStage("Instruction fetch", "fet")
+	stages[1] = NewStage("Decode instruction", "dec")
+	stages[2] = NewStage("Execute instruction", "exe")
+	stages[3] = NewStage("Memory access", "mem")
+	stages[4] = NewStage("Write back", "wrb")
+
+	decodeChan := instructionFetch(pipeline.In)
+	executeChan := decodeInstruction(decodeChan)
+	memAccessChan := executeAddCalc(executeChan)
+	writeBackChan := memoryAccess(memAccessChan)
+	pipeline.Out = writeBack(writeBackChan)
 
 	return pipeline
 }
@@ -435,37 +450,24 @@ func main() {
 		registers[nick] = 0
 	}
 
-	stages[0] = NewStage("Instruction fetch", "fet")
-	stages[1] = NewStage("Decode instruction", "dec")
-	stages[2] = NewStage("Execute instruction", "exe")
-	stages[3] = NewStage("Memory access", "mem")
-	stages[4] = NewStage("Write back", "wrb")
-
 	term := &Terminal{}
 	term.HandleUserInput()
 
 	pipeline = NewPipeline()
-	instructionsChan := make(chan int)
-
-	decodeChan := instructionFetch(instructionsChan)
-	executeChan := decodeInstruction(decodeChan)
-	memAccessChan := executeAddCalc(executeChan)
-	writeBackChan := memoryAccess(memAccessChan)
-	out := writeBack(writeBackChan)
 
 	go func() {
-		for o := range out {
+		for o := range pipeline.Out {
 			Debug("Instruction completed: %v\n", o)
 		}
 	}()
 
 	for pipeline.PC != pipeline.Lines {
 		pipeline.PC++
-		instructionsChan <- pipeline.PC
+		pipeline.In <- pipeline.PC
 		Debug("Send instruction from PC %d\n", pipeline.PC)
 	}
 	Debug("All instructions sended")
-	close(instructionsChan)
+	close(pipeline.In)
 
 	fmt.Println("All instructions executed")
 }
