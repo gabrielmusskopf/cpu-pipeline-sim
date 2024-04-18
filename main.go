@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -18,19 +19,70 @@ func Debug(format string, v ...any) {
 	}
 }
 
+var pipeline *Pipeline
+
 type Pipeline struct {
-	PC           int
-	Consts       map[string]string
-	Instructions []*Instruction
+	File   []byte
+	PC     int
+	Labels map[string]int // Label: PC
+	Lines  int
 }
 
-type Register = [8]int
+func NewPipeline() *Pipeline {
+	file, err := os.Open("instrucoes.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	b, err := io.ReadAll(file)
+	if err != nil {
+		log.Fatal(err)
+	}
+	pipeline := &Pipeline{
+		File: b,
+		PC:   1,
+	}
+
+	pipeline.ParseFile()
+
+	return pipeline
+}
+
+func (p *Pipeline) ReadLine(num int) string {
+	reader := bytes.NewReader(p.File)
+	sc := bufio.NewScanner(reader)
+	for i := 1; i <= num; i++ {
+		sc.Scan()
+	}
+	return sc.Text()
+}
+
+func (p *Pipeline) ParseFile() {
+	lines := 0
+	labels := make(map[string]int)
+
+	reader := bytes.NewReader(p.File)
+	scan := bufio.NewScanner(reader)
+	for scan.Scan() {
+		lines++
+		lineParts := strings.Split(scan.Text(), " ")
+		key := lineParts[0]
+
+		if !IsOpcode(key) {
+			labels[key] = lines
+			Debug("Parsed [%s: %d] constant\n", key, labels[key])
+		}
+	}
+
+	p.Labels = labels
+	p.Lines = lines
+}
+
+var numRegisters = 32
+var registers map[string]int8
 
 type Opcode string
-
-func (o Opcode) String() string {
-	return string(o)
-}
 
 const (
 	ADD  Opcode = "add"
@@ -39,7 +91,23 @@ const (
 	SUBI Opcode = "subi"
 	BEQ  Opcode = "beq"
 	J    Opcode = "j"
+	NOOP Opcode = "noop"
 )
+
+func (o Opcode) String() string {
+	return string(o)
+}
+
+func IsOpcode(s string) bool {
+	o := Opcode(s)
+	return ADD == o ||
+		ADDI == o ||
+		SUB == o ||
+		SUBI == o ||
+		BEQ == o ||
+		J == o ||
+		NOOP == o
+}
 
 type Instruction struct {
 	Opcode Opcode
@@ -53,103 +121,153 @@ type Instruction struct {
 }
 
 func (i Instruction) String() string {
-	return fmt.Sprintf("%s", i.Opcode)
+	var sb strings.Builder
+	sb.WriteString(i.Opcode.String())
+
+	if len(i.Op1) != 0 {
+		sb.WriteString(" ")
+		sb.WriteString(i.Op1)
+	}
+	if len(i.Op2) != 0 {
+		sb.WriteString(" ")
+		sb.WriteString(i.Op2)
+	}
+	if len(i.Op3) != 0 {
+		sb.WriteString(" ")
+		sb.WriteString(i.Op3)
+	}
+
+	return sb.String()
+}
+
+// Substiuindo lw: addi R0 R1 -1 = Soma R0 com neg1 e coloca no R1
+func AddiOperation(i *Instruction) error {
+	op1, ok := registers[i.Op1]
+	if !ok {
+		i.Valid = false
+		return fmt.Errorf("Register %s does not exist", i.Op1)
+	}
+	_, ok = registers[i.Op2]
+	if !ok {
+		i.Valid = false
+		return fmt.Errorf("Register %s does not exist", i.Op2)
+	}
+	op3 := registers[i.Op3]
+	pc, ok := pipeline.Labels[i.Op3]
+	if ok {
+		// Contains a label. "Jump" to related PC to get the int8 value
+		op3 = spy(pc)
+	}
+	registers[i.Op2] = op1 + op3
+	return nil
+}
+
+// "Jump" to PC and get the value
+func spy(pc int) int8 {
+	line := pipeline.ReadLine(pc)
+	parts := strings.Split(line, " ")
+	r, err := strconv.Atoi(parts[len(parts)-1])
+	if err != nil {
+		fmt.Printf("ERROR: R3 is not a number. Maybe it was not decoded properly")
+		return 0
+	}
+	return int8(r)
+}
+
+// add R0 R1 R2
+// R0 = R1 + R2
+func AddOperation(i *Instruction) {
+	op1Nick := fmt.Sprintf("R%s", i.Op1)
+	op2Nick := fmt.Sprintf("R%s", i.Op2)
+	op3Nick := fmt.Sprintf("R%s", i.Op3)
+
+	_, ok := registers[op1Nick]
+	if !ok {
+		i.Valid = false
+		fmt.Printf("ERROR: Register %s does not exist\n", i.Op1)
+	}
+	op2, ok := registers[op2Nick]
+	if !ok {
+		i.Valid = false
+		fmt.Printf("ERROR: Register %s does not exist\n", i.Op1)
+	}
+	op3, ok := registers[op3Nick]
+	if !ok {
+		i.Valid = false
+		fmt.Printf("ERROR: Register %s does not exist\n", i.Op1)
+	}
+
+	registers[op1Nick] = op2 + op3
 }
 
 type Stage struct {
 	UserChan        chan rune
 	CurrInstruction *Instruction
+	CurrPC          int
 	IsActive        bool
 }
 
-var consts map[string]string
-var registers = make([]Register, 0)
-var stagesCount = 5
-var stages []*Stage
+var stages [5]*Stage
 
-func readInstructions(reader io.Reader) []*Instruction {
-	instructions := make([]*Instruction, 0)
-
-	scan := bufio.NewScanner(reader)
-	for scan.Scan() {
-		line := scan.Text()
-		if strings.Contains(line, "halt") {
-			break
-		}
-
-		instruction := parseInstruction(line)
-		instructions = append(instructions, instruction)
-		Debug("Parsed %v instruction\n", instruction)
+func divisionLine() {
+	for i := 0; i < 100; i++ {
+		fmt.Print("━")
 	}
-
-	return instructions
+	fmt.Println()
 }
-
-func readConsts(file io.Reader) map[string]string {
-	scan := bufio.NewScanner(file)
-
-	constsStarted := false
-	consts := make(map[string]string)
-
-	for scan.Scan() {
-		line := scan.Text()
-		if strings.Contains(line, "halt") {
-			constsStarted = true
-		}
-		if constsStarted {
-			lineParts := strings.Split(line, " ")
-			key := lineParts[0]
-			consts[key] = lineParts[len(lineParts)-1]
-			Debug("Parsed [%s: %s] constant\n", key, consts[key])
-		}
-	}
-
-	return consts
-}
-
 func printState() {
-	for i, stage := range stages {
-		opcode := "EMPTY"
+	divisionLine()
+	for t, stage := range stages {
+		status := "EMPTY"
 		if stage != nil && stage.CurrInstruction != nil && stage.CurrInstruction.Opcode != "" {
-			opcode = string(stage.CurrInstruction.Opcode)
+			status = stage.CurrInstruction.String()
 		}
-		fmt.Printf("[%d] %s\t", i, opcode)
+		if t == 0 { //fetch stage
+			status = fmt.Sprintf("PC=%d", stage.CurrPC)
+		}
+
+		fmt.Printf("[%d] %s\t", t, status)
+	}
+	fmt.Println()
+	divisionLine()
+}
+
+func printRegisters() {
+	nickFormat := "│R%02d│ "
+
+	for i := 0; i <= numRegisters; i++ {
+		fmt.Print("╭───╮ ")
+	}
+	fmt.Println()
+	for i := 0; i <= numRegisters; i++ {
+		fmt.Printf(nickFormat, i)
+	}
+	fmt.Println()
+	for i := 0; i <= numRegisters; i++ {
+		nick := fmt.Sprintf("R%d", i)
+		value := registers[nick]
+		fmt.Printf("│%2d │ ", value)
+	}
+	fmt.Println()
+	for i := 0; i <= numRegisters; i++ {
+		fmt.Print("╰───╯ ")
 	}
 	fmt.Println()
 }
 
-func parseInstruction(line string) *Instruction {
-	parts := strings.Split(line, " ")
-	i := &Instruction{
-		Opcode: Opcode(parts[0]),
-	}
-
-	if len(parts) > 1 {
-		i.Op1 = parts[1]
-	}
-	if len(parts) > 2 {
-		i.Op2 = parts[2]
-	}
-	if len(parts) > 3 {
-		i.Op3 = parts[3]
-	}
-
-	return i
-}
-
-func instructionFetch(in chan *Instruction) chan *Instruction {
+// in Program counter (PC)
+func instructionFetch(in chan int) chan string {
 	s := stages[0]
-	out := make(chan *Instruction, 5)
+	out := make(chan string, 5)
 	go func() {
-		for instruction := range in {
-			Debug("Instruction fetch recieved instruction %v\n", instruction)
-			s.CurrInstruction = instruction
+		for pc := range in {
+			Debug("Instruction fetch recieved PC %d\n", pc)
+			s.CurrPC = pc
 			s.IsActive = true
+			instruction := pipeline.ReadLine(pc)
 			for {
 				select {
 				case <-s.UserChan:
-					Debug("Instruction fetch toggled")
-					s.CurrInstruction = nil
 					s.IsActive = false
 					out <- instruction
 				}
@@ -163,18 +281,19 @@ func instructionFetch(in chan *Instruction) chan *Instruction {
 	return out
 }
 
-func decodeInstruction(in chan *Instruction) chan *Instruction {
+// in Raw instrucion line channel
+func decodeInstruction(in chan string) chan *Instruction {
 	s := stages[1]
 	out := make(chan *Instruction, 5)
 	go func() {
-		for instruction := range in {
-			Debug("Decode instruction recieved instruction %v\n", instruction)
+		for raw := range in {
+			Debug("Decode instruction recieved instruction %s\n", raw)
+			instruction := parseInstruction(raw)
 			s.CurrInstruction = instruction
 			s.IsActive = true
 			for {
 				select {
 				case <-s.UserChan:
-					Debug("Decode instruction toggled")
 					s.CurrInstruction = nil
 					s.IsActive = false
 					out <- instruction
@@ -187,6 +306,33 @@ func decodeInstruction(in chan *Instruction) chan *Instruction {
 	return out
 }
 
+func parseInstruction(line string) *Instruction {
+	parts := strings.Split(line, " ")
+
+	padding := 0
+	if !IsOpcode(parts[0]) {
+		// Skip label from parse
+		padding = 1
+	}
+
+	i := &Instruction{
+		Opcode: Opcode(parts[0+padding]),
+	}
+
+	if len(parts) > 1+padding {
+		i.Op1 = parts[1+padding]
+	}
+	if len(parts) > 2+padding {
+		i.Op2 = parts[2+padding]
+	}
+	if len(parts) > 3+padding {
+		i.Op3 = parts[3+padding]
+	}
+
+	return i
+}
+
+// in Decoded instruction
 func executeAddCalc(in chan *Instruction) chan *Instruction {
 	s := stages[2]
 	out := make(chan *Instruction, 5)
@@ -195,10 +341,17 @@ func executeAddCalc(in chan *Instruction) chan *Instruction {
 			Debug("Execute Address Calculation recieved instruction %v\n", instruction)
 			s.CurrInstruction = instruction
 			s.IsActive = true
+
+			switch instruction.Opcode {
+			case ADDI:
+				AddiOperation(instruction)
+			case ADD:
+				AddOperation(instruction)
+			}
+
 			for {
 				select {
 				case <-s.UserChan:
-					Debug("Execute Address Calculation toggled")
 					s.CurrInstruction = nil
 					s.IsActive = false
 					out <- instruction
@@ -211,6 +364,7 @@ func executeAddCalc(in chan *Instruction) chan *Instruction {
 	return out
 }
 
+// in Instruction after execution complete channel
 func memoryAccess(in chan *Instruction) chan *Instruction {
 	s := stages[3]
 	out := make(chan *Instruction, 5)
@@ -222,7 +376,6 @@ func memoryAccess(in chan *Instruction) chan *Instruction {
 			for {
 				select {
 				case <-s.UserChan:
-					Debug("Memory Access toggled")
 					s.CurrInstruction = nil
 					s.IsActive = false
 					out <- instruction
@@ -235,6 +388,7 @@ func memoryAccess(in chan *Instruction) chan *Instruction {
 	return out
 }
 
+// in Instruction after save
 func writeBack(in chan *Instruction) <-chan *Instruction {
 	stage := stages[4]
 	out := make(chan *Instruction, 5)
@@ -246,7 +400,6 @@ func writeBack(in chan *Instruction) <-chan *Instruction {
 			for {
 				select {
 				case <-stage.UserChan:
-					Debug("Write Back toggled")
 					stage.CurrInstruction = nil
 					stage.IsActive = false
 					out <- instruction
@@ -283,6 +436,8 @@ func handleUserInput() {
 				os.Exit(0)
 			case 'v', 'V':
 				printState()
+			case 'r', 'R':
+				printRegisters()
 			case 'k', 'K':
 				broadcast(char)
 			case 'h', 'H':
@@ -293,31 +448,25 @@ func handleUserInput() {
 }
 
 func main() {
-	stages = make([]*Stage, 0)
-	for i := 0; i < stagesCount; i++ {
-		stages = append(stages, &Stage{UserChan: make(chan rune), IsActive: false})
+
+	registers = make(map[string]int8)
+	for i := 0; i <= numRegisters; i++ {
+		nick := fmt.Sprintf("R%d", i)
+		registers[nick] = 0
 	}
 
-	file, err := os.Open("instrucoes.txt")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-
-	buf := &bytes.Buffer{}
-	tee := io.TeeReader(file, buf)
-	consts := readConsts(tee)
-	instructions := readInstructions(buf)
-
-	pipeline := &Pipeline{
-		Consts:       consts,
-		Instructions: instructions,
-		PC:           1,
+	for i := 0; i < len(stages); i++ {
+		stages[i] = &Stage{
+			UserChan: make(chan rune),
+			IsActive: false,
+			CurrPC:   0,
+		}
 	}
 
 	handleUserInput()
 
-	instructionsChan := make(chan *Instruction, 1)
+	pipeline = NewPipeline()
+	instructionsChan := make(chan int, pipeline.Lines)
 
 	decodeChan := instructionFetch(instructionsChan)
 	executeChan := decodeInstruction(decodeChan)
@@ -325,16 +474,18 @@ func main() {
 	writeBackChan := memoryAccess(memAccessChan)
 	out := writeBack(writeBackChan)
 
-	for _, instruction := range pipeline.Instructions {
-		instructionsChan <- instruction
+	for pipeline.PC != pipeline.Lines {
+		instructionsChan <- pipeline.PC
 		pipeline.PC++
 	}
 	Debug("All instructions sended")
 	close(instructionsChan)
 
-	Debug("Pipeline PC: %d\n", pipeline.PC)
+	Debug("Pipeline PC: %d\n", pipeline.PC+1)
 
 	for o := range out {
 		Debug("Instruction completed: %v\n", o)
 	}
+
+	fmt.Println("Todas as instruções foram executadas.")
 }
