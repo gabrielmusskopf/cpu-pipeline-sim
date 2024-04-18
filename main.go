@@ -230,6 +230,7 @@ func BeqOperation(i *Instruction) {
 
 type Stage struct {
 	Name            string
+	Nickname        string
 	UserChan        chan rune
 	CurrInstruction *Instruction
 	CurrPC          int
@@ -238,14 +239,14 @@ type Stage struct {
 
 var stages [5]*Stage
 
-func NewStage(name string) *Stage {
+func NewStage(name, nc string) *Stage {
 	return &Stage{
 		Name:     name,
+		Nickname: nc,
 		UserChan: make(chan rune),
 		IsActive: false,
 		CurrPC:   0,
 	}
-
 }
 
 // in Program counter (PC)
@@ -253,7 +254,7 @@ func instructionFetch(in chan int) chan string {
 	s := stages[0]
 	out := make(chan string, 5)
 	go func() {
-		Debug("Fetch goroutine started and is waiting for messages\n")
+		Debug("%s goroutine started and is waiting for messages\n", s.Name)
 		for pc := range in {
 			Debug("Instruction fetch recieved PC %d\n", pc)
 			s.CurrPC = pc
@@ -268,7 +269,7 @@ func instructionFetch(in chan int) chan string {
 				break
 			}
 		}
-		Debug("Fetch will not recieve anything else\n")
+		Debug("%s will not recieve anything else\n", s.Name)
 		close(out)
 	}()
 
@@ -280,7 +281,7 @@ func decodeInstruction(in chan string) chan *Instruction {
 	s := stages[1]
 	out := make(chan *Instruction, 5)
 	go func() {
-		Debug("Decode goroutine started and is waiting for messages\n")
+		Debug("%s goroutine started and is waiting for messages\n", s.Name)
 		for raw := range in {
 			Debug("Decode instruction recieved instruction %s\n", raw)
 			instruction := parseInstruction(raw)
@@ -296,7 +297,7 @@ func decodeInstruction(in chan string) chan *Instruction {
 				break
 			}
 		}
-		Debug("Decode will not recieve anything else\n")
+		Debug("%s will not recieve anything else\n", s.Name)
 		close(out)
 	}()
 	return out
@@ -333,7 +334,7 @@ func executeAddCalc(in chan *Instruction) chan *Instruction {
 	s := stages[2]
 	out := make(chan *Instruction, 5)
 	go func() {
-		Debug("Execute goroutine started and is waiting for messages\n")
+		Debug("%s goroutine started and is waiting for messages\n", s.Name)
 		for instruction := range in {
 			Debug("Execute Address Calculation recieved instruction %v\n", instruction)
 			s.CurrInstruction = instruction
@@ -361,7 +362,7 @@ func executeAddCalc(in chan *Instruction) chan *Instruction {
 				break
 			}
 		}
-		Debug("Execute will not recieve anything else\n")
+		Debug("%s will not recieve anything else\n", s.Name)
 		close(out)
 	}()
 	return out
@@ -372,7 +373,7 @@ func memoryAccess(in chan *Instruction) chan *Instruction {
 	s := stages[3]
 	out := make(chan *Instruction, 5)
 	go func() {
-		Debug("Memory Access goroutine started and is waiting for messages\n")
+		Debug("%s goroutine started and is waiting for messages\n", s.Name)
 		for instruction := range in {
 			Debug("Memory Access recieved instruction %v\n", instruction)
 			s.CurrInstruction = instruction
@@ -387,7 +388,7 @@ func memoryAccess(in chan *Instruction) chan *Instruction {
 				break
 			}
 		}
-		Debug("Memory Access will not recieve anything else\n")
+		Debug("%s will not recieve anything else\n", s.Name)
 		close(out)
 	}()
 	return out
@@ -399,7 +400,7 @@ func writeBack(in chan *Instruction) chan *Instruction {
 	// Arbitrary for now. This can cause issues for extensive jumping, filling this channel
 	out := make(chan *Instruction, 256)
 	go func() {
-		Debug("Write Back goroutine started and is waiting for messages\n")
+		Debug("%s goroutine started and is waiting for messages\n", stage.Name)
 		for instruction := range in {
 			Debug("Write Back recieved instruction %v\n", instruction)
 			stage.CurrInstruction = instruction
@@ -414,7 +415,7 @@ func writeBack(in chan *Instruction) chan *Instruction {
 				break
 			}
 		}
-		Debug("Write Back will not recieve anything else\n")
+		Debug("%s will not recieve anything else\n", stage.Name)
 		close(out)
 	}()
 	return out
@@ -435,11 +436,11 @@ func main() {
 		registers[nick] = 0
 	}
 
-	stages[0] = NewStage("fet")
-	stages[1] = NewStage("dec")
-	stages[2] = NewStage("exe")
-	stages[3] = NewStage("mem")
-	stages[4] = NewStage("wrb")
+	stages[0] = NewStage("Instruction fetch", "fet")
+	stages[1] = NewStage("Decode instruction", "dec")
+	stages[2] = NewStage("Execute instruction", "exe")
+	stages[3] = NewStage("Memory access", "mem")
+	stages[4] = NewStage("Write back", "wrb")
 
 	term := &Terminal{}
 	term.HandleUserInput()

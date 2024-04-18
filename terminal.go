@@ -61,7 +61,7 @@ func printState() {
         } else {
             active = "I"
         }
-		fmt.Printf("(%s)[%s] %s\t\t", active, stage.Name, status)
+		fmt.Printf("(%s)[%s] %s\t\t", active, stage.Nickname, status)
 	}
 	fmt.Println()
 	divisionLine()
