@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-var debug = true
+var debug = false
 
 func Debug(format string, v ...any) {
 	if debug {
