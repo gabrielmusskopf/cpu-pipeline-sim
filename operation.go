@@ -14,7 +14,7 @@ func getRegisterName(r string) string {
 }
 
 // Substiuindo lw: addi R0 R1 -1 = Soma R0 com neg1 e coloca no R1
-func AddiOperation(i *Instruction) error {
+func AddiOperation(i *Instruction, pipe Pipeline) error {
 	op1, ok := registers[getRegisterName(i.Op1)]
 	if !ok {
 		i.Valid = false
@@ -26,10 +26,10 @@ func AddiOperation(i *Instruction) error {
 		return fmt.Errorf("Register %s does not exist", i.Op2)
 	}
 	var op3 int8
-	pc, ok := pipeline.Label(i.Op3)
+	pc, ok := pipe.Label(i.Op3)
 	if ok {
 		// Contains a label. "Jump" to related PC to get the int8 value
-		op3 = spy(pc)
+		op3 = spy(pc, pipe)
 	} else {
 		op3 = registers[getRegisterName(i.Op3)]
 	}
@@ -38,8 +38,8 @@ func AddiOperation(i *Instruction) error {
 }
 
 // "Jump" to PC and get the value
-func spy(pc int) int8 {
-	line := pipeline.Read(pc)
+func spy(pc int, pipe Pipeline) int8 {
+	line := pipe.Read(pc)
 	parts := strings.Split(line, " ")
 	r, err := strconv.Atoi(parts[len(parts)-1])
 	if err != nil {
@@ -51,7 +51,7 @@ func spy(pc int) int8 {
 
 // add R0 R1 R2
 // R0 = R1 + R2
-func AddOperation(i *Instruction) {
+func AddOperation(i *Instruction, pip Pipeline) {
 	op1Nick := getRegisterName(i.Op1)
 	op2Nick := getRegisterName(i.Op2)
 	op3Nick := getRegisterName(i.Op3)
@@ -75,7 +75,7 @@ func AddOperation(i *Instruction) {
 	registers[op1Nick] = op2 + op3
 }
 
-func BeqOperation(i *Instruction) {
+func BeqOperation(i *Instruction, pipe Pipeline) {
 	op1Nick := getRegisterName(i.Op1)
 	op2Nick := getRegisterName(i.Op2)
 
@@ -92,12 +92,12 @@ func BeqOperation(i *Instruction) {
 		return
 	}
 	if op1 == op2 {
-		pc, ok := pipeline.Label(i.Op3)
+		pc, ok := pipe.Label(i.Op3)
 		if !ok {
 			fmt.Printf("ERROR: Label %s does not exist\n", i.Op3)
 			return
 		}
 		Debug("Jumping to %d\n", pc)
-		pipeline.JumpTo(pc)
+		pipe.JumpTo(pc)
 	}
 }

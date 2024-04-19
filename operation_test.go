@@ -16,30 +16,12 @@ func (p *PipelineNOOP) Label(label string) (int, bool) {
 	return pc, ok
 }
 
-func (p *PipelineNOOP) CurrPC() int {
-    return p.PC
-}
-
-func (p *PipelineNOOP) Next() int {
-	return 0
-}
-
-func (p *PipelineNOOP) Close() {}
-
-func (p *PipelineNOOP) Pull() chan *Instruction {
-	return nil
-}
-
-func (p *PipelineNOOP) IsOver() bool {
-	return true
-}
-
 func (p *PipelineNOOP) JumpTo(pc int) {
     p.PC = pc
 }
 
 func TestAddi(t *testing.T) {
-	pipeline = &PipelineNOOP{
+    pipeline := &PipelineNOOP{
 		Labels: make(map[string]int),
 	}
 
@@ -54,7 +36,7 @@ func TestAddi(t *testing.T) {
 		Op3: "R2",
 	}
 
-	AddiOperation(instruction)
+	AddiOperation(instruction, pipeline)
 
 	got := registers["R1"]
 	if got != 2 {
@@ -65,7 +47,7 @@ func TestAddi(t *testing.T) {
 func TestAddiLabeled(t *testing.T) {
 	labels := make(map[string]int)
 	labels["two"] = 10
-	pipeline = &PipelineNOOP{
+    pipeline := &PipelineNOOP{
 		Labels: labels,
 	}
 
@@ -79,7 +61,7 @@ func TestAddiLabeled(t *testing.T) {
 		Op3: "two",
 	}
 
-	AddiOperation(instruction)
+	AddiOperation(instruction, pipeline)
 
 	got := registers["R1"]
 	if got != 2 {
@@ -88,7 +70,7 @@ func TestAddiLabeled(t *testing.T) {
 }
 
 func TestAdd(t *testing.T) {
-	pipeline = &PipelineNOOP{}
+    pipeline := &PipelineNOOP{}
 
 	registers = make(map[string]int8)
 	registers["R0"] = 0
@@ -101,7 +83,7 @@ func TestAdd(t *testing.T) {
 		Op3: "R2",
 	}
 
-	AddiOperation(instruction)
+	AddiOperation(instruction, pipeline)
 
 	got := registers["R1"]
 	if got != 3 {
@@ -112,7 +94,7 @@ func TestAdd(t *testing.T) {
 func TestBeq(t *testing.T) {
 	labels := make(map[string]int)
 	labels["loop"] = 10
-	pipeline = &PipelineNOOP{
+    pipeline := &PipelineNOOP{
 		PC:     0,
 		Labels: labels,
 	}
@@ -127,9 +109,9 @@ func TestBeq(t *testing.T) {
 		Op3: "loop",
 	}
 
-	BeqOperation(instruction)
+	BeqOperation(instruction, pipeline)
 
-	got := pipeline.CurrPC()
+	got := pipeline.PC
 	if got != 10 {
 		t.Errorf("BEQ jumped to %d, want 10", got)
 	}

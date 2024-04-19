@@ -21,15 +21,8 @@ func Debug(format string, v ...any) {
 type Pipeline interface {
 	Read(int) string
 	Label(string) (int, bool)
-    CurrPC() int
-	Next() int
-	Close()
-	Pull() chan *Instruction
-	IsOver() bool
 	JumpTo(int)
 }
-
-var pipeline Pipeline
 
 type PipelineFile struct {
 	File   []byte
@@ -40,7 +33,7 @@ type PipelineFile struct {
 	Out    chan *Instruction
 }
 
-func NewPipeline() Pipeline {
+func NewPipeline() *PipelineFile {
 	file, err := os.Open("instrucoes.txt")
 	if err != nil {
 		log.Fatal(err)
@@ -65,11 +58,11 @@ func NewPipeline() Pipeline {
 	stages[3] = NewStage("Memory access", "mem")
 	stages[4] = NewStage("Write back", "wrb")
 
-	decodeChan := instructionFetch(pipeline.In)
-	executeChan := decodeInstruction(decodeChan)
-	memAccessChan := executeAddCalc(executeChan)
-	writeBackChan := memoryAccess(memAccessChan)
-	pipeline.Out = writeBack(writeBackChan)
+	decodeChan := pipeline.instructionFetch(pipeline.In)
+	executeChan := pipeline.decodeInstruction(decodeChan)
+	memAccessChan := pipeline.executeAddCalc(executeChan)
+	writeBackChan := pipeline.memoryAccess(memAccessChan)
+	pipeline.Out = pipeline.writeBack(writeBackChan)
 
 	return pipeline
 }
@@ -104,31 +97,9 @@ func (p *PipelineFile) Read(num int) string {
 	return sc.Text()
 }
 
-func (p *PipelineFile) Pull() chan *Instruction {
-	return p.Out
-}
-
 func (p *PipelineFile) Label(name string) (int, bool) {
 	pc, ok := p.Labels[name]
 	return pc, ok
-}
-
-func (p *PipelineFile) CurrPC() int {
-    return p.PC
-}
-
-func (p *PipelineFile) Next() int {
-	p.PC++
-	p.In <- p.PC
-	return p.PC
-}
-
-func (p *PipelineFile) Close() {
-	close(p.In)
-}
-
-func (p *PipelineFile) IsOver() bool {
-	return p.PC == p.Lines
 }
 
 func (p *PipelineFile) JumpTo(pc int) {
@@ -219,7 +190,7 @@ func NewStage(name, nc string) *Stage {
 }
 
 // in Program counter (PC)
-func instructionFetch(in chan int) chan string {
+func (p *PipelineFile) instructionFetch(in chan int) chan string {
 	s := stages[0]
 	out := make(chan string)
 	go func() {
@@ -228,7 +199,7 @@ func instructionFetch(in chan int) chan string {
 			Debug("Instruction fetch recieved PC %d\n", pc)
 			s.CurrPC = pc
 			s.IsActive = true
-			instruction := pipeline.Read(pc)
+			instruction := p.Read(pc)
 			for {
 				select {
 				case <-s.UserChan:
@@ -246,7 +217,7 @@ func instructionFetch(in chan int) chan string {
 }
 
 // in Raw instrucion line channel
-func decodeInstruction(in chan string) chan *Instruction {
+func (p *PipelineFile) decodeInstruction(in chan string) chan *Instruction {
 	s := stages[1]
 	out := make(chan *Instruction)
 	go func() {
@@ -299,7 +270,7 @@ func parseInstruction(line string) *Instruction {
 }
 
 // in Decoded instruction
-func executeAddCalc(in chan *Instruction) chan *Instruction {
+func (p *PipelineFile) executeAddCalc(in chan *Instruction) chan *Instruction {
 	s := stages[2]
 	out := make(chan *Instruction)
 	go func() {
@@ -314,11 +285,11 @@ func executeAddCalc(in chan *Instruction) chan *Instruction {
 				fmt.Println("HALT")
 				os.Exit(1)
 			case ADDI:
-				AddiOperation(instruction)
+				AddiOperation(instruction, p)
 			case ADD:
-				AddOperation(instruction)
+				AddOperation(instruction, p)
 			case BEQ:
-				BeqOperation(instruction)
+				BeqOperation(instruction, p)
 			}
 
 			for {
@@ -338,7 +309,7 @@ func executeAddCalc(in chan *Instruction) chan *Instruction {
 }
 
 // in Instruction after execution complete channel
-func memoryAccess(in chan *Instruction) chan *Instruction {
+func (p *PipelineFile) memoryAccess(in chan *Instruction) chan *Instruction {
 	s := stages[3]
 	out := make(chan *Instruction)
 	go func() {
@@ -363,7 +334,7 @@ func memoryAccess(in chan *Instruction) chan *Instruction {
 }
 
 // in Instruction after save
-func writeBack(in chan *Instruction) chan *Instruction {
+func (p *PipelineFile) writeBack(in chan *Instruction) chan *Instruction {
 	stage := stages[4]
 	out := make(chan *Instruction)
 	go func() {
@@ -406,20 +377,21 @@ func main() {
 	term := &Terminal{}
 	term.HandleUserInput()
 
-	pipeline = NewPipeline()
+	pipeline := NewPipeline()
 
 	go func() {
-		for o := range pipeline.Pull() {
+		for o := range pipeline.Out {
 			Debug("Instruction completed: %v\n", o)
 		}
 	}()
 
-	for !pipeline.IsOver() {
-		currentPC := pipeline.Next()
-		Debug("Send instruction from PC %d\n", currentPC)
+	for pipeline.PC != pipeline.Lines {
+		pipeline.PC++
+		pipeline.In <- pipeline.PC
+		Debug("Send instruction from PC %d\n", pipeline.PC)
 	}
 	Debug("All instructions sended")
-	pipeline.Close()
+	close(pipeline.In)
 
 	fmt.Println("All instructions executed")
 }
