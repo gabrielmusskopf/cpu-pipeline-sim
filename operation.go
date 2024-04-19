@@ -7,9 +7,9 @@ import (
 )
 
 func getRegisterName(r string) string {
-    if strings.HasPrefix(r, "R") {
-        return r
-    }
+	if strings.HasPrefix(r, "R") {
+		return r
+	}
 	return fmt.Sprintf("R%s", r)
 }
 
@@ -25,11 +25,13 @@ func AddiOperation(i *Instruction) error {
 		i.Valid = false
 		return fmt.Errorf("Register %s does not exist", i.Op2)
 	}
-	op3 := registers[getRegisterName(i.Op3)]
-	pc, ok := pipeline.Labels[i.Op3]
+	var op3 int8
+	pc, ok := pipeline.Label(i.Op3)
 	if ok {
 		// Contains a label. "Jump" to related PC to get the int8 value
 		op3 = spy(pc)
+	} else {
+		op3 = registers[getRegisterName(i.Op3)]
 	}
 	registers[i.Op2] = op1 + op3
 	return nil
@@ -37,7 +39,7 @@ func AddiOperation(i *Instruction) error {
 
 // "Jump" to PC and get the value
 func spy(pc int) int8 {
-	line := pipeline.ReadLine(pc)
+	line := pipeline.Read(pc)
 	parts := strings.Split(line, " ")
 	r, err := strconv.Atoi(parts[len(parts)-1])
 	if err != nil {
@@ -90,12 +92,12 @@ func BeqOperation(i *Instruction) {
 		return
 	}
 	if op1 == op2 {
-		pc, ok := pipeline.Labels[i.Op3]
+		pc, ok := pipeline.Label(i.Op3)
 		if !ok {
 			fmt.Printf("ERROR: Label %s does not exist\n", i.Op3)
 			return
 		}
 		Debug("Jumping to %d\n", pc)
-		pipeline.PC = pc
+		pipeline.JumpTo(pc)
 	}
 }

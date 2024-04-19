@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-var debug = false
+var debug = true
 
 func Debug(format string, v ...any) {
 	if debug {
@@ -18,9 +18,20 @@ func Debug(format string, v ...any) {
 	}
 }
 
-var pipeline *Pipeline
+type Pipeline interface {
+	Read(int) string
+	Label(string) (int, bool)
+    CurrPC() int
+	Next() int
+	Close()
+	Pull() chan *Instruction
+	IsOver() bool
+	JumpTo(int)
+}
 
-type Pipeline struct {
+var pipeline Pipeline
+
+type PipelineFile struct {
 	File   []byte
 	PC     int
 	Labels map[string]int // Label: PC
@@ -29,7 +40,7 @@ type Pipeline struct {
 	Out    chan *Instruction
 }
 
-func NewPipeline() *Pipeline {
+func NewPipeline() Pipeline {
 	file, err := os.Open("instrucoes.txt")
 	if err != nil {
 		log.Fatal(err)
@@ -40,7 +51,7 @@ func NewPipeline() *Pipeline {
 	if err != nil {
 		log.Fatal(err)
 	}
-	pipeline := &Pipeline{
+	pipeline := &PipelineFile{
 		File: b,
 		PC:   0,
 		In:   make(chan int),
@@ -63,16 +74,7 @@ func NewPipeline() *Pipeline {
 	return pipeline
 }
 
-func (p *Pipeline) ReadLine(num int) string {
-	reader := bytes.NewReader(p.File)
-	sc := bufio.NewScanner(reader)
-	for i := 1; i <= num; i++ {
-		sc.Scan()
-	}
-	return sc.Text()
-}
-
-func (p *Pipeline) ParseFile() {
+func (p *PipelineFile) ParseFile() {
 	lines := 0
 	labels := make(map[string]int)
 
@@ -91,6 +93,46 @@ func (p *Pipeline) ParseFile() {
 
 	p.Labels = labels
 	p.Lines = lines
+}
+
+func (p *PipelineFile) Read(num int) string {
+	reader := bytes.NewReader(p.File)
+	sc := bufio.NewScanner(reader)
+	for i := 1; i <= num; i++ {
+		sc.Scan()
+	}
+	return sc.Text()
+}
+
+func (p *PipelineFile) Pull() chan *Instruction {
+	return p.Out
+}
+
+func (p *PipelineFile) Label(name string) (int, bool) {
+	pc, ok := p.Labels[name]
+	return pc, ok
+}
+
+func (p *PipelineFile) CurrPC() int {
+    return p.PC
+}
+
+func (p *PipelineFile) Next() int {
+	p.PC++
+	p.In <- p.PC
+	return p.PC
+}
+
+func (p *PipelineFile) Close() {
+	close(p.In)
+}
+
+func (p *PipelineFile) IsOver() bool {
+	return p.PC == p.Lines
+}
+
+func (p *PipelineFile) JumpTo(pc int) {
+	p.PC = pc
 }
 
 var numRegisters = 32
@@ -186,7 +228,7 @@ func instructionFetch(in chan int) chan string {
 			Debug("Instruction fetch recieved PC %d\n", pc)
 			s.CurrPC = pc
 			s.IsActive = true
-			instruction := pipeline.ReadLine(pc)
+			instruction := pipeline.Read(pc)
 			for {
 				select {
 				case <-s.UserChan:
@@ -367,18 +409,17 @@ func main() {
 	pipeline = NewPipeline()
 
 	go func() {
-		for o := range pipeline.Out {
+		for o := range pipeline.Pull() {
 			Debug("Instruction completed: %v\n", o)
 		}
 	}()
 
-	for pipeline.PC != pipeline.Lines {
-		pipeline.PC++
-		pipeline.In <- pipeline.PC
-		Debug("Send instruction from PC %d\n", pipeline.PC)
+	for !pipeline.IsOver() {
+		currentPC := pipeline.Next()
+		Debug("Send instruction from PC %d\n", currentPC)
 	}
 	Debug("All instructions sended")
-	close(pipeline.In)
+	pipeline.Close()
 
 	fmt.Println("All instructions executed")
 }
