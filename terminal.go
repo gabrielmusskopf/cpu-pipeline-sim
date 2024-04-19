@@ -10,6 +10,7 @@ import (
 )
 
 type Terminal struct {
+	Pipeline     Pipeline
 	play         bool
 	playDuration time.Duration
 	playChan     chan rune
@@ -47,11 +48,11 @@ func (t *Terminal) HandleUserInput() {
 			case "q", "Q":
 				os.Exit(0)
 			case "v", "V":
-				printState()
+				t.printState()
 			case "r", "R":
-				printRegisters()
+				t.printRegisters()
 			case "d", "D":
-				toggleDebug()
+				t.toggleDebug()
 			case "p", "P":
 				t.playDuration = 2 * time.Second
 				if len(parts) > 1 {
@@ -64,7 +65,7 @@ func (t *Terminal) HandleUserInput() {
 				}
 				t.togglePlay()
 			case "k", "K":
-				Broadcast('k')
+				t.Pipeline.Broadcast('k')
 			case "h", "H":
 				help()
 			}
@@ -72,7 +73,7 @@ func (t *Terminal) HandleUserInput() {
 	}()
 }
 
-func toggleDebug() {
+func (t *Terminal) toggleDebug() {
 	debug = !debug
 	var debugState string
 	if debug {
@@ -96,9 +97,9 @@ func (t *Terminal) togglePlay() {
 					fmt.Println("Done auto play")
 					return
 				case _ = <-t.ticker.C:
-					printRegisters()
-					printState()
-					Broadcast('k')
+					t.printRegisters()
+					t.printState()
+					t.Pipeline.Broadcast('k')
 				}
 			}
 		}()
@@ -108,16 +109,16 @@ func (t *Terminal) togglePlay() {
 	}
 }
 
-func divisionLine() {
+func (t *Terminal) divisionLine() {
 	for i := 0; i < 150; i++ {
 		fmt.Print("━")
 	}
 	fmt.Println()
 }
 
-func printState() {
-	divisionLine()
-	for t, stage := range stages {
+func (t *Terminal) printState() {
+	t.divisionLine()
+	for t, stage := range t.Pipeline.Stages() {
 		status := "EMPTY"
 		if stage != nil && stage.CurrInstruction != nil && stage.CurrInstruction.Opcode != "" {
 			status = stage.CurrInstruction.String()
@@ -135,10 +136,10 @@ func printState() {
 		fmt.Printf("(%s)[%s] %s\t\t", active, stage.Nickname, status)
 	}
 	fmt.Println()
-	divisionLine()
+	t.divisionLine()
 }
 
-func printRegisters() {
+func (t *Terminal) printRegisters() {
 	for i := 0; i <= numRegisters; i++ {
 		fmt.Print("┌───┐")
 	}

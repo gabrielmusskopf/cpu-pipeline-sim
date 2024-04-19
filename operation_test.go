@@ -17,11 +17,17 @@ func (p *PipelineNOOP) Label(label string) (int, bool) {
 }
 
 func (p *PipelineNOOP) JumpTo(pc int) {
-    p.PC = pc
+	p.PC = pc
+}
+
+func (p *PipelineNOOP) Broadcast(r rune) {}
+
+func (p *PipelineNOOP) Stages() []*Stage {
+	return []*Stage{}
 }
 
 func TestAddi(t *testing.T) {
-    pipeline := &PipelineNOOP{
+	pipeline := &PipelineNOOP{
 		Labels: make(map[string]int),
 	}
 
@@ -47,7 +53,7 @@ func TestAddi(t *testing.T) {
 func TestAddiLabeled(t *testing.T) {
 	labels := make(map[string]int)
 	labels["two"] = 10
-    pipeline := &PipelineNOOP{
+	pipeline := &PipelineNOOP{
 		Labels: labels,
 	}
 
@@ -70,7 +76,7 @@ func TestAddiLabeled(t *testing.T) {
 }
 
 func TestAdd(t *testing.T) {
-    pipeline := &PipelineNOOP{}
+	pipeline := &PipelineNOOP{}
 
 	registers = make(map[string]int8)
 	registers["R0"] = 0
@@ -94,7 +100,7 @@ func TestAdd(t *testing.T) {
 func TestBeq(t *testing.T) {
 	labels := make(map[string]int)
 	labels["loop"] = 10
-    pipeline := &PipelineNOOP{
+	pipeline := &PipelineNOOP{
 		PC:     0,
 		Labels: labels,
 	}

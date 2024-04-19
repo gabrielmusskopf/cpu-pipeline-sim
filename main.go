@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-var debug = true
+var debug = false
 
 func Debug(format string, v ...any) {
 	if debug {
@@ -22,6 +22,8 @@ type Pipeline interface {
 	Read(int) string
 	Label(string) (int, bool)
 	JumpTo(int)
+	Broadcast(rune)
+	Stages() []*Stage
 }
 
 type PipelineFile struct {
@@ -31,6 +33,7 @@ type PipelineFile struct {
 	Lines  int
 	In     chan int
 	Out    chan *Instruction
+	s      []*Stage
 }
 
 func NewPipeline() *PipelineFile {
@@ -52,11 +55,13 @@ func NewPipeline() *PipelineFile {
 
 	pipeline.ParseFile()
 
-	stages[0] = NewStage("Instruction fetch", "fet")
-	stages[1] = NewStage("Decode instruction", "dec")
-	stages[2] = NewStage("Execute instruction", "exe")
-	stages[3] = NewStage("Memory access", "mem")
-	stages[4] = NewStage("Write back", "wrb")
+	pipeline.s = []*Stage{
+		NewStage("Instruction fetch", "fet"),
+		NewStage("Decode instruction", "dec"),
+		NewStage("Execute instruction", "exe"),
+		NewStage("Memory access", "mem"),
+		NewStage("Write back", "wrb"),
+	}
 
 	decodeChan := pipeline.instructionFetch(pipeline.In)
 	executeChan := pipeline.decodeInstruction(decodeChan)
@@ -104,6 +109,18 @@ func (p *PipelineFile) Label(name string) (int, bool) {
 
 func (p *PipelineFile) JumpTo(pc int) {
 	p.PC = pc
+}
+
+func (p *PipelineFile) Broadcast(v rune) {
+	for _, stage := range p.s {
+		if stage.IsActive {
+			stage.UserChan <- v
+		}
+	}
+}
+
+func (p PipelineFile) Stages() []*Stage {
+	return p.s
 }
 
 var numRegisters = 32
@@ -177,8 +194,6 @@ type Stage struct {
 	IsActive        bool
 }
 
-var stages [5]*Stage
-
 func NewStage(name, nc string) *Stage {
 	return &Stage{
 		Name:     name,
@@ -191,7 +206,7 @@ func NewStage(name, nc string) *Stage {
 
 // in Program counter (PC)
 func (p *PipelineFile) instructionFetch(in chan int) chan string {
-	s := stages[0]
+    s := p.s[0]
 	out := make(chan string)
 	go func() {
 		Debug("%s goroutine started and is waiting for messages\n", s.Name)
@@ -218,7 +233,7 @@ func (p *PipelineFile) instructionFetch(in chan int) chan string {
 
 // in Raw instrucion line channel
 func (p *PipelineFile) decodeInstruction(in chan string) chan *Instruction {
-	s := stages[1]
+    s := p.s[1]
 	out := make(chan *Instruction)
 	go func() {
 		Debug("%s goroutine started and is waiting for messages\n", s.Name)
@@ -271,7 +286,7 @@ func parseInstruction(line string) *Instruction {
 
 // in Decoded instruction
 func (p *PipelineFile) executeAddCalc(in chan *Instruction) chan *Instruction {
-	s := stages[2]
+    s := p.s[2]
 	out := make(chan *Instruction)
 	go func() {
 		Debug("%s goroutine started and is waiting for messages\n", s.Name)
@@ -310,7 +325,7 @@ func (p *PipelineFile) executeAddCalc(in chan *Instruction) chan *Instruction {
 
 // in Instruction after execution complete channel
 func (p *PipelineFile) memoryAccess(in chan *Instruction) chan *Instruction {
-	s := stages[3]
+    s := p.s[3]
 	out := make(chan *Instruction)
 	go func() {
 		Debug("%s goroutine started and is waiting for messages\n", s.Name)
@@ -335,36 +350,28 @@ func (p *PipelineFile) memoryAccess(in chan *Instruction) chan *Instruction {
 
 // in Instruction after save
 func (p *PipelineFile) writeBack(in chan *Instruction) chan *Instruction {
-	stage := stages[4]
+    s := p.s[4]
 	out := make(chan *Instruction)
 	go func() {
-		Debug("%s goroutine started and is waiting for messages\n", stage.Name)
+		Debug("%s goroutine started and is waiting for messages\n", s.Name)
 		for instruction := range in {
 			Debug("Write Back recieved instruction %v\n", instruction)
-			stage.CurrInstruction = instruction
-			stage.IsActive = true
+			s.CurrInstruction = instruction
+			s.IsActive = true
 			for {
 				select {
-				case <-stage.UserChan:
+				case <-s.UserChan:
 					out <- instruction
-					stage.CurrInstruction = nil
-					stage.IsActive = false
+					s.CurrInstruction = nil
+					s.IsActive = false
 				}
 				break
 			}
 		}
-		Debug("%s will not recieve anything else\n", stage.Name)
+		Debug("%s will not recieve anything else\n", s.Name)
 		close(out)
 	}()
 	return out
-}
-
-func Broadcast(v rune) {
-	for _, stage := range stages {
-		if stage.IsActive {
-			stage.UserChan <- v
-		}
-	}
 }
 
 func main() {
@@ -374,10 +381,12 @@ func main() {
 		registers[nick] = 0
 	}
 
-	term := &Terminal{}
-	term.HandleUserInput()
-
 	pipeline := NewPipeline()
+
+	term := &Terminal{
+		Pipeline: pipeline,
+	}
+	term.HandleUserInput()
 
 	go func() {
 		for o := range pipeline.Out {
