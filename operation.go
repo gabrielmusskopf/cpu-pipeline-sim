@@ -45,7 +45,7 @@ func AddiOperation(i *Instruction, pipe Pipeline) error {
 	} else {
 		op3 = registers[getRegisterName(i.Op3)]
 	}
-	registers[i.Op2] = op1 + op3
+	updateRegister(i.Op2, op1+op3)
 	return nil
 }
 
@@ -72,7 +72,7 @@ func AddOperation(i *Instruction, pip Pipeline) error {
 		return fmt.Errorf("ERROR: Register %s does not exist\n", i.Op1)
 	}
 
-	registers[op1Nick] = op2 + op3
+	updateRegister(op1Nick, op2+op3)
 	return nil
 }
 
@@ -95,7 +95,7 @@ func SubiOperation(i *Instruction, pipe Pipeline) error {
 	} else {
 		op3 = registers[getRegisterName(i.Op3)]
 	}
-	registers[i.Op2] = op1 - op3
+    updateRegister(i.Op2, op1 - op3)
 	return nil
 }
 
@@ -122,7 +122,7 @@ func SubOperation(i *Instruction, pip Pipeline) error {
 		return fmt.Errorf("ERROR: Register %s does not exist\n", i.Op1)
 	}
 
-	registers[op1Nick] = op2 - op3
+    updateRegister(op1Nick, op2 - op3)
 	return nil
 }
 

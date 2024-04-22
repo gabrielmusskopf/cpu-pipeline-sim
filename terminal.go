@@ -66,6 +66,8 @@ func (t *Terminal) HandleUserInput() {
 				t.togglePlay()
 			case "k", "K":
 				t.Pipeline.Broadcast('k')
+				t.printRegisters()
+				t.printState()
 			case "h", "H":
 				help()
 			}

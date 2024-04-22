@@ -8,13 +8,16 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 )
 
-var debug = false
+var events chan interface{} = make(chan interface{}, 20)
+var debug = true
 
 func Debug(format string, v ...any) {
 	if debug {
-		log.Printf(format, v...)
+		message := fmt.Sprintf(format, v...)
+        events <- debugMsg{message: fmt.Sprintf("%s %s", time.Now().Format("15:04:05 2006-01-02"), message)}
 	}
 }
 
@@ -93,6 +96,26 @@ func (p *PipelineFile) ParseFile() {
 	p.Lines = lines
 }
 
+func (p *PipelineFile) Start() {
+	go func() {
+		for o := range p.Out {
+			Debug("Instruction completed: %v\n", o)
+		}
+	}()
+
+	go func() {
+		for p.PC != p.Lines {
+			p.PC++
+			p.In <- p.PC
+			Debug("Send instruction from PC %d\n", p.PC)
+		}
+		Debug("All instructions sended")
+		close(p.In)
+
+		fmt.Println("All instructions executed")
+	}()
+}
+
 func (p *PipelineFile) Read(num int) string {
 	reader := bytes.NewReader(p.File)
 	sc := bufio.NewScanner(reader)
@@ -125,6 +148,15 @@ func (p PipelineFile) Stages() []*Stage {
 
 var numRegisters = 32
 var registers map[string]int8
+
+func updateRegister(name string, value int8) {
+	_, ok := registers[name]
+	if !ok {
+		return
+	}
+	registers[name] = value
+	events <- registerUpdatedMsg{name: name, value: value}
+}
 
 type Opcode string
 
@@ -206,7 +238,7 @@ func NewStage(name, nc string) *Stage {
 
 // in Program counter (PC)
 func (p *PipelineFile) instructionFetch(in chan int) chan string {
-    s := p.s[0]
+	s := p.s[0]
 	out := make(chan string)
 	go func() {
 		Debug("%s goroutine started and is waiting for messages\n", s.Name)
@@ -215,6 +247,12 @@ func (p *PipelineFile) instructionFetch(in chan int) chan string {
 			s.CurrPC = pc
 			s.IsActive = true
 			instruction := p.Read(pc)
+
+			events <- stageToggledMsg{
+				position: 0,
+				value:    pc,
+			}
+
 			for {
 				select {
 				case <-s.UserChan:
@@ -233,7 +271,7 @@ func (p *PipelineFile) instructionFetch(in chan int) chan string {
 
 // in Raw instrucion line channel
 func (p *PipelineFile) decodeInstruction(in chan string) chan *Instruction {
-    s := p.s[1]
+	s := p.s[1]
 	out := make(chan *Instruction)
 	go func() {
 		Debug("%s goroutine started and is waiting for messages\n", s.Name)
@@ -242,6 +280,12 @@ func (p *PipelineFile) decodeInstruction(in chan string) chan *Instruction {
 			instruction := parseInstruction(raw)
 			s.CurrInstruction = instruction
 			s.IsActive = true
+
+			events <- stageToggledMsg{
+				position: 1,
+				value:    instruction,
+			}
+
 			for {
 				select {
 				case <-s.UserChan:
@@ -286,7 +330,7 @@ func parseInstruction(line string) *Instruction {
 
 // in Decoded instruction
 func (p *PipelineFile) executeAddCalc(in chan *Instruction) chan *Instruction {
-    s := p.s[2]
+	s := p.s[2]
 	out := make(chan *Instruction)
 	go func() {
 		Debug("%s goroutine started and is waiting for messages\n", s.Name)
@@ -297,8 +341,8 @@ func (p *PipelineFile) executeAddCalc(in chan *Instruction) chan *Instruction {
 
 			switch instruction.Opcode {
 			case HALT:
-				fmt.Println("HALT")
-				os.Exit(1)
+                Debug("HALT!\n")
+                events<-quitMsg{}
 			case ADDI:
 				AddiOperation(instruction, p)
 			case ADD:
@@ -311,6 +355,11 @@ func (p *PipelineFile) executeAddCalc(in chan *Instruction) chan *Instruction {
 				SubOperation(instruction, p)
 			case J:
 				JOperation(instruction, p)
+			}
+
+			events <- stageToggledMsg{
+				position: 2,
+				value:    instruction,
 			}
 
 			for {
@@ -331,13 +380,19 @@ func (p *PipelineFile) executeAddCalc(in chan *Instruction) chan *Instruction {
 
 // in Instruction after execution complete channel
 func (p *PipelineFile) memoryAccess(in chan *Instruction) chan *Instruction {
-    s := p.s[3]
+	s := p.s[3]
 	out := make(chan *Instruction)
 	go func() {
 		Debug("%s goroutine started and is waiting for messages\n", s.Name)
 		for instruction := range in {
 			s.CurrInstruction = instruction
 			s.IsActive = true
+
+			events <- stageToggledMsg{
+				position: 3,
+				value:    instruction,
+			}
+
 			for {
 				select {
 				case <-s.UserChan:
@@ -356,7 +411,7 @@ func (p *PipelineFile) memoryAccess(in chan *Instruction) chan *Instruction {
 
 // in Instruction after save
 func (p *PipelineFile) writeBack(in chan *Instruction) chan *Instruction {
-    s := p.s[4]
+	s := p.s[4]
 	out := make(chan *Instruction)
 	go func() {
 		Debug("%s goroutine started and is waiting for messages\n", s.Name)
@@ -364,6 +419,12 @@ func (p *PipelineFile) writeBack(in chan *Instruction) chan *Instruction {
 			Debug("Write Back recieved instruction %v\n", instruction)
 			s.CurrInstruction = instruction
 			s.IsActive = true
+
+			events <- stageToggledMsg{
+				position: 4,
+				value:    instruction,
+			}
+
 			for {
 				select {
 				case <-s.UserChan:
@@ -382,31 +443,13 @@ func (p *PipelineFile) writeBack(in chan *Instruction) chan *Instruction {
 
 func main() {
 	registers = make(map[string]int8)
-	for i := 0; i <= numRegisters; i++ {
+	for i := 0; i < numRegisters; i++ {
 		nick := fmt.Sprintf("R%d", i)
 		registers[nick] = 0
 	}
 
 	pipeline := NewPipeline()
+    pipeline.Start()
 
-	term := &Terminal{
-		Pipeline: pipeline,
-	}
-	term.HandleUserInput()
-
-	go func() {
-		for o := range pipeline.Out {
-			Debug("Instruction completed: %v\n", o)
-		}
-	}()
-
-	for pipeline.PC != pipeline.Lines {
-		pipeline.PC++
-		pipeline.In <- pipeline.PC
-		Debug("Send instruction from PC %d\n", pipeline.PC)
-	}
-	Debug("All instructions sended")
-	close(pipeline.In)
-
-	fmt.Println("All instructions executed")
+	RunCmd(pipeline, registers, events)
 }
