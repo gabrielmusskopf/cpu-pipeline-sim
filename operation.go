@@ -73,32 +73,7 @@ func AddOperation(i *Instruction, pip Pipeline) error {
 	}
 
 	registers[op1Nick] = op2 + op3
-    return nil
-}
-
-func BeqOperation(i *Instruction, pipe Pipeline) error {
-	op1Nick := getRegisterName(i.Op1)
-	op2Nick := getRegisterName(i.Op2)
-
-	op1, ok := registers[op1Nick]
-	if !ok {
-		i.Valid = false
-		return fmt.Errorf("ERROR: Register %s does not exist\n", i.Op1)
-	}
-	op2, ok := registers[op2Nick]
-	if !ok {
-		i.Valid = false
-		return fmt.Errorf("ERROR: Register %s does not exist\n", i.Op1)
-	}
-	if op1 == op2 {
-		pc, ok := pipe.Label(i.Op3)
-		if !ok {
-			return fmt.Errorf("ERROR: Label %s does not exist\n", i.Op3)
-		}
-		Debug("Jumping to %d\n", pc)
-		pipe.JumpTo(pc)
-	}
-    return nil
+	return nil
 }
 
 func SubiOperation(i *Instruction, pipe Pipeline) error {
@@ -148,5 +123,43 @@ func SubOperation(i *Instruction, pip Pipeline) error {
 	}
 
 	registers[op1Nick] = op2 - op3
-    return nil
+	return nil
+}
+
+func BeqOperation(i *Instruction, pipe Pipeline) error {
+	op1Nick := getRegisterName(i.Op1)
+	op2Nick := getRegisterName(i.Op2)
+
+	op1, ok := registers[op1Nick]
+	if !ok {
+		i.Valid = false
+		return fmt.Errorf("ERROR: Register %s does not exist\n", i.Op1)
+	}
+	op2, ok := registers[op2Nick]
+	if !ok {
+		i.Valid = false
+		return fmt.Errorf("ERROR: Register %s does not exist\n", i.Op1)
+	}
+	if op1 == op2 {
+		pc, ok := pipe.Label(i.Op3)
+		if !ok {
+			return fmt.Errorf("ERROR: Label %s does not exist\n", i.Op3)
+		}
+		Debug("Jumping to %d\n", pc)
+		pipe.JumpTo(pc)
+	}
+	return nil
+}
+
+// Jump to labeled PC
+// j loop
+func JOperation(i *Instruction, pipe Pipeline) error {
+	pc, ok := pipe.Label(i.Op1)
+	if !ok {
+		return fmt.Errorf("ERROR: Label %s does not exist\n", i.Op3)
+	}
+
+	Debug("Jumping to %d\n", pc)
+	pipe.JumpTo(pc)
+	return nil
 }

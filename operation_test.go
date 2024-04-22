@@ -207,3 +207,25 @@ func TestSub(t *testing.T) {
 		t.Errorf("ADDI = %d, want %d", got, want)
 	}
 }
+
+func TestJ(t *testing.T) {
+    var want int = 5
+    
+	pipeline := &PipelineNOOP{
+		Labels: map[string]int{
+			"loop": 5,
+		},
+	}
+
+	instruction := &Instruction{
+		Op1: "loop",
+	}
+
+    JOperation(instruction, pipeline)
+
+    got := pipeline.PC
+    if got != want {
+		t.Errorf("J jumped to %d, want %d", got, want)
+    }
+
+}

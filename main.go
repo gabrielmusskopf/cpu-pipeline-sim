@@ -309,6 +309,8 @@ func (p *PipelineFile) executeAddCalc(in chan *Instruction) chan *Instruction {
 				SubiOperation(instruction, p)
 			case SUB:
 				SubOperation(instruction, p)
+			case J:
+				JOperation(instruction, p)
 			}
 
 			for {
