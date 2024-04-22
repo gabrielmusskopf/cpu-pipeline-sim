@@ -123,3 +123,30 @@ func SubiOperation(i *Instruction, pipe Pipeline) error {
 	registers[i.Op2] = op1 - op3
 	return nil
 }
+
+// sub R0 R1 R2
+// R0 = R1 - R2
+func SubOperation(i *Instruction, pip Pipeline) error {
+	op1Nick := getRegisterName(i.Op1)
+	op2Nick := getRegisterName(i.Op2)
+	op3Nick := getRegisterName(i.Op3)
+
+	_, ok := registers[op1Nick]
+	if !ok {
+		i.Valid = false
+		return fmt.Errorf("ERROR: Register %s does not exist\n", i.Op1)
+	}
+	op2, ok := registers[op2Nick]
+	if !ok {
+		i.Valid = false
+		return fmt.Errorf("ERROR: Register %s does not exist\n", i.Op1)
+	}
+	op3, ok := registers[op3Nick]
+	if !ok {
+		i.Valid = false
+		return fmt.Errorf("ERROR: Register %s does not exist\n", i.Op1)
+	}
+
+	registers[op1Nick] = op2 - op3
+    return nil
+}

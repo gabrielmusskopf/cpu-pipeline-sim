@@ -183,3 +183,27 @@ func TestSubiLabeled(t *testing.T) {
 		t.Errorf("SUBI = %d, want %d", got, want)
 	}
 }
+
+func TestSub(t *testing.T) {
+    var want int8 = 2
+
+	pipeline := &PipelineNOOP{}
+
+	registers = make(map[string]int8)
+	registers["R1"] = 0
+	registers["R2"] = 3
+	registers["R3"] = 1
+
+	instruction := &Instruction{
+		Op1: "R1",
+		Op2: "R2",
+		Op3: "R3",
+	}
+
+	SubOperation(instruction, pipeline)
+
+	got := registers["R1"]
+	if got != want {
+		t.Errorf("ADDI = %d, want %d", got, want)
+	}
+}
