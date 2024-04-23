@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"fmt"
 	"io"
 	"log"
 	"os"
@@ -28,8 +27,8 @@ type PipelineFile struct {
 	s      []*Stage
 }
 
-func NewPipeline() *PipelineFile {
-	file, err := os.Open("instrucoes.txt")
+func NewPipeline(filename string) *PipelineFile {
+	file, err := os.Open(filename)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -88,7 +87,7 @@ func (p *PipelineFile) ParseFile() {
 func (p *PipelineFile) Start() {
 	go func() {
 		for o := range p.Out {
-			Debug("Instruction completed: %v\n", o)
+			Info("Instruction completed: %v\n", o)
 		}
 	}()
 
@@ -98,10 +97,10 @@ func (p *PipelineFile) Start() {
 			p.In <- p.PC
 			Debug("Send instruction from PC %d\n", p.PC)
 		}
-		Debug("All instructions sended")
+		Info("All instructions sended")
 		close(p.In)
 
-		fmt.Println("All instructions executed")
+		Info("All instructions executed")
 	}()
 }
 

@@ -1,4 +1,4 @@
 
 run:
-	go build -o bin/pipeline
-	./bin/pipeline
+	@go build -o bin/pipeline
+	@./bin/pipeline

@@ -104,6 +104,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				duration, err := time.ParseDuration(v)
 				if err != nil {
+					Debug("Invalid '%v' duration. Using default\n", v)
 					duration = 2 * time.Second
 				}
 				m.autoplay = true
@@ -120,6 +121,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "ctrl+c", "q":
 			return m, quit
+
+		case "d", "D":
+			debug = !debug
+			Info("Debug: %v\n", debug)
+			return m, cmd
 
 		case "k":
 			return m, toggleStages
@@ -144,11 +150,18 @@ func (m model) View() string {
 	var sb strings.Builder
 
 	sb.WriteString("Simulador pipeline MIPS\n\n")
+	sb.WriteString("Instruções:\n")
+	sb.WriteString("  k            avançar o estágio\n")
+	sb.WriteString("  p, p <delay> avançar os estágios automaticamente\n")
+	sb.WriteString("  d            habilitar/desabilitar logs debug\n")
+	sb.WriteString("  q, ctrl+c    sair\n\n")
 
-	sb.WriteString(fmt.Sprintf("Autoplay: %v", m.autoplay))
+	sb.WriteString(fmt.Sprintf("Autoplay: %v ", m.autoplay))
 	if m.autoplay {
-		sb.WriteString(fmt.Sprintf(" [%v]", m.autoplayDelay))
+		sb.WriteString(fmt.Sprintf("[%v] ", m.autoplayDelay))
 	}
+
+	sb.WriteString(fmt.Sprintf("\nDebug:\t  %v", debug))
 	sb.WriteString("\n\n")
 
 	for i := 0; i < len(m.registers); i++ {
@@ -178,7 +191,9 @@ func (m model) View() string {
 		latest = m.messages[len(m.messages)-15:]
 	}
 	for _, message := range latest {
-		sb.WriteString(message)
+		if debug || !strings.HasPrefix(message, "DEBUG") {
+			sb.WriteString(message)
+		}
 	}
 
 	if m.quitting {
