@@ -22,20 +22,12 @@ func max(a, b int) int {
 }
 
 var (
-	titleStyle = func() lipgloss.Style {
-		b := lipgloss.RoundedBorder()
-		b.Right = "├"
-		return lipgloss.NewStyle().BorderStyle(b).Padding(0, 1)
-	}()
+	pipeline      Pipeline
+	activeStyle   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "235", Dark: "252"})
+	inactiveStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "250", Dark: "238"})
 
-	infoStyle = func() lipgloss.Style {
-		b := lipgloss.RoundedBorder()
-		b.Left = "┤"
-		return titleStyle.Copy().BorderStyle(b)
-	}()
+	colors = []string{"167", "168", "169", "170", "171"}
 )
-
-var pipeline Pipeline
 
 // keyMap defines a set of keybindings. To work for help it must satisfy
 // key.Map. It could also very easily be a map[string]key.Binding.
@@ -110,12 +102,14 @@ type model struct {
 	autoplay      bool
 	autoplayDelay time.Duration
 	autoplayDone  chan bool
+	width         int
 }
 
 type stage struct {
 	nickname string
 	name     string
 	value    any
+	color    string
 }
 
 func initModel(pipe Pipeline, regs map[string]int8) model {
@@ -131,6 +125,7 @@ func initModel(pipe Pipeline, regs map[string]int8) model {
 		stages = append(stages, &stage{
 			name:     s.Name,
 			nickname: s.Nickname,
+			color:    colors[len(stages)%len(colors)],
 		})
 	}
 
@@ -140,9 +135,6 @@ func initModel(pipe Pipeline, regs map[string]int8) model {
 
 	vp := viewport.New(150, 15)
 	vp.SetContent("Messages")
-
-	//p.ActiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "235", Dark: "252"}).Render("•")
-	//p.InactiveDot = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "250", Dark: "238"}).Render("•")
 
 	return model{
 		sub:           events,
@@ -216,6 +208,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		m.help.Width = msg.Width
+		m.messagesView.Width = msg.Width
+		m.width = msg.Width
 
 	case tea.KeyMsg:
 		if m.askParams {
@@ -245,23 +239,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch {
-		//case "ctrl+c", "q", "Q":
 		case key.Matches(msg, m.keys.Quit):
 			return m, quit
 
 		case key.Matches(msg, m.keys.Help):
 			m.help.ShowAll = !m.help.ShowAll
 
-		//case "d", "D":
 		case key.Matches(msg, m.keys.D):
 			debug = !debug
 			Info("Debug: %v\n", debug)
 
-		//case "l":
 		case key.Matches(msg, m.keys.L):
 			return m, toggleStages
 
-		//case "p", "P":
 		case key.Matches(msg, m.keys.P):
 			if m.autoplay {
 				m.autoplayDone <- true
@@ -294,33 +284,24 @@ func (m model) View() string {
 	sb.WriteString(fmt.Sprintf("\nDebug:\t  %v", debug))
 	sb.WriteString("\n\n")
 
-	// Registradores
-	for i := 0; i < len(m.registers); i++ {
-		name := fmt.Sprintf("R%d", i)
-		sb.WriteString(fmt.Sprintf("%s=%d\t", name, m.registers[name]))
-
-		if i == (len(m.registers)-1)/2 {
-			sb.WriteString("\n")
-		}
-	}
-	sb.WriteString("\n\n")
-
-	// Estágios
-	for _, stage := range m.stages {
-		s := fmt.Sprintf("[%s] %v\t\t", stage.nickname, stage.value)
-		sb.WriteString(s)
-	}
-	sb.WriteString("\n\n")
-
 	// Input parâmetros
 	if m.askParams {
 		sb.WriteString(m.input.View())
 		sb.WriteString("\n\n")
 	}
 
+	// Registradores
+	sb.WriteString(m.headerView("Registradores") + "\n")
+	sb.WriteString(m.registersView())
+	sb.WriteString("\n\n")
+
+	// Estágios
+	sb.WriteString(m.stagesView())
+	sb.WriteString("\n\n")
+
 	// Eventos
-	sb.WriteString(m.headerView() + "\n")
-	sb.WriteString(m.messagesView.View())
+	sb.WriteString(m.headerView("Eventos") + "\n")
+	sb.WriteString(m.messagesView.View() + "\n")
 	sb.WriteString(m.footerView() + "\n")
 	sb.WriteString("\n")
 
@@ -335,15 +316,62 @@ func (m model) View() string {
 	return sb.String()
 }
 
-func (m model) headerView() string {
-	//title := titleStyle.Render("Eventos")
-	title := "── Eventos "
+func (m model) registersView() string {
+	var sb strings.Builder
+
+	sb.WriteString("Nome\t")
+	for i := 0; i < len(m.registers); i++ {
+		name := fmt.Sprintf("R%d", i)
+		value := fmt.Sprintf("R%02d  ", i)
+		if m.registers[name] != 0 {
+			sb.WriteString(activeStyle.Render(value))
+		} else {
+			sb.WriteString(inactiveStyle.Render(value))
+		}
+	}
+	sb.WriteString("\n")
+
+	sb.WriteString("Valor\t")
+	for i := 0; i < len(m.registers); i++ {
+		name := fmt.Sprintf("R%d", i)
+		value := fmt.Sprintf("%3d  ", m.registers[name])
+		if m.registers[name] != 0 {
+			sb.WriteString(activeStyle.Render(value))
+		} else {
+			sb.WriteString(inactiveStyle.Render(value))
+		}
+	}
+
+	return sb.String()
+}
+
+func (m model) stagesView() string {
+	var sb strings.Builder
+
+	sb.WriteString(m.headerView("Estágios") + "\n\n")
+
+	for _, stage := range m.stages {
+		s := fmt.Sprintf("[%s] %v \t\t", stage.nickname, stage.value)
+
+		stageStyle := lipgloss.NewStyle().
+			Width(m.width / len(m.stages)).
+			AlignHorizontal(lipgloss.Center).
+			Foreground(lipgloss.Color("15")).
+			Background(lipgloss.Color(stage.color))
+
+		sb.WriteString(stageStyle.Render(s))
+	}
+	return sb.String()
+}
+
+func (m model) headerView(t string) string {
+	title := fmt.Sprintf("── %s ", t)
 	line := strings.Repeat("─", max(0, m.messagesView.Width-lipgloss.Width(title)))
 	return lipgloss.JoinHorizontal(lipgloss.Center, title, line)
 }
 
 func (m model) footerView() string {
-	info := infoStyle.Render(fmt.Sprintf("%3.f%%", m.messagesView.ScrollPercent()*100))
+	info := fmt.Sprintf(" %3.f%% ──", m.messagesView.ScrollPercent()*100)
 	line := strings.Repeat("─", max(0, m.messagesView.Width-lipgloss.Width(info)))
 	return lipgloss.JoinHorizontal(lipgloss.Center, line, info)
 }
