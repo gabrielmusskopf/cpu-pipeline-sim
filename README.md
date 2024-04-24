@@ -53,7 +53,7 @@ de um canal, e bloqueia até que seja consumido.
 Cada estágio, após receber a mensagem e processar sua tarefa, aguarda uma mensagem para enviar a instrução
 para o próximo estágio.
 
-[Arquitetura básica](docs/arch.png)
+![Arquitetura básica](docs/arch.png)
 
 # TUI
 
@@ -61,4 +61,4 @@ para o próximo estágio.
 dos processos da pipeline, que utiliza o framework [Bubble Tea](https://github.com/charmbracelet/bubbletea).
 As goroutines comunicam seu estado/eventos para o laço de eventos (update) do TUI através de um canal de eventos.
 
-[Demo](docs/demo.gif)
+![Demo](docs/demo.gif)
