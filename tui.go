@@ -22,10 +22,15 @@ func max(a, b int) int {
 }
 
 var (
-	pipeline      Pipeline
-	activeStyle   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "235", Dark: "252"})
-	inactiveStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "250", Dark: "238"})
-	stageStyle    = lipgloss.NewStyle().AlignHorizontal(lipgloss.Left).PaddingLeft(2).Foreground(lipgloss.Color("15"))
+	pipeline       Pipeline
+	activeStyle    = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "235", Dark: "252"})
+	inactiveStyle  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "250", Dark: "238"})
+	stageStyle     = lipgloss.NewStyle().AlignHorizontal(lipgloss.Left).PaddingLeft(2).Foreground(lipgloss.Color("15"))
+	messagesStyles = map[string]lipgloss.Style{
+		"ERROR": lipgloss.NewStyle().Width(6).Align(lipgloss.Left).Foreground(lipgloss.Color("#F05D5E")),
+		"DEBUG": lipgloss.NewStyle().Width(6).Align(lipgloss.Left).Foreground(lipgloss.Color("#7DDF64")),
+		"INFO":  lipgloss.NewStyle().Width(6).Align(lipgloss.Left).Foreground(lipgloss.Color("#0AD3FF")),
+	}
 
 	colors = []string{"167", "168", "169", "170", "171"}
 )
@@ -94,7 +99,6 @@ type model struct {
 	stages        []*stage
 	messages      []string
 	messagesView  viewport.Model
-	messagesStyle lipgloss.Style
 	registers     map[string]int8
 	keys          keyMap
 	help          help.Model
@@ -139,15 +143,14 @@ func initModel(pipe Pipeline, regs map[string]int8) model {
 	vp.SetContent("Messages")
 
 	return model{
-		sub:           events,
-		stages:        stages,
-		registers:     registers,
-		input:         ti,
-		autoplayDone:  make(chan bool),
-		keys:          keys,
-		help:          help.New(),
-		messagesView:  vp,
-		messagesStyle: lipgloss.NewStyle().Background(lipgloss.Color("#7D56F4")),
+		sub:          events,
+		stages:       stages,
+		registers:    registers,
+		input:        ti,
+		autoplayDone: make(chan bool),
+		keys:         keys,
+		help:         help.New(),
+		messagesView: vp,
 	}
 }
 
@@ -295,10 +298,7 @@ func (m model) View() string {
 	sb.WriteString(m.stagesView())
 
 	// Eventos
-	sb.WriteString(m.headerView("Eventos") + "\n")
-	sb.WriteString(m.messagesView.View() + "\n")
-	sb.WriteString(m.footerView() + "\n")
-	sb.WriteString("\n")
+	sb.WriteString(m.eventsView())
 
 	if m.quitting {
 		sb.WriteString("Finishing!\n\n")
@@ -371,6 +371,26 @@ func (m model) stagesView() string {
 		s += style.Render(st)
 	}
 	s += "\n\n"
+	return s
+}
+
+func (m model) eventsView() string {
+	s := m.headerView("Eventos") + "\n"
+	filtered := make([]string, 0)
+	for _, message := range m.messages {
+		if debug || !strings.HasPrefix(message, "DEBUG") {
+			parts := strings.SplitN(message, " ", 2)
+			typ := parts[0]
+			content := parts[1]
+			typ = messagesStyles[typ].Render(typ)
+
+			filtered = append(filtered, typ+content)
+		}
+	}
+	m.messagesView.SetContent(strings.Join(filtered, ""))
+	s += m.messagesView.View() + "\n"
+	s += m.footerView() + "\n"
+	s += "\n"
 	return s
 }
 

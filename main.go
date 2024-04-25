@@ -8,19 +8,22 @@ import (
 var events chan interface{} = make(chan interface{}, 20)
 var debug = true
 
-func givemenow() string {
-	return time.Now().Format("15:04:05 2006-01-02")
+func joinMessage(category string, format string, v ...any) {
+	message := fmt.Sprintf(format, v...)
+	events <- debugMsg{message: fmt.Sprintf("%s %s %s", category, time.Now().Format("15:04:05 2006-01-02"), message)}
 }
 
 func Info(format string, v ...any) {
-	message := fmt.Sprintf(format, v...)
-	events <- debugMsg{message: fmt.Sprintf("INFO %s %s", givemenow(), message)}
+	joinMessage("INFO", format, v)
+}
+
+func Error(format string, v ...any) {
+	joinMessage("ERROR", format, v)
 }
 
 func Debug(format string, v ...any) {
 	if debug {
-		message := fmt.Sprintf(format, v...)
-		events <- debugMsg{message: fmt.Sprintf("DEBUG %s %s", givemenow(), message)}
+		joinMessage("DEBUG", format, v)
 	}
 }
 
