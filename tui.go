@@ -25,6 +25,7 @@ var (
 	pipeline      Pipeline
 	activeStyle   = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "235", Dark: "252"})
 	inactiveStyle = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "250", Dark: "238"})
+	stageStyle    = lipgloss.NewStyle().AlignHorizontal(lipgloss.Left).PaddingLeft(2).Foreground(lipgloss.Color("15"))
 
 	colors = []string{"167", "168", "169", "170", "171"}
 )
@@ -363,13 +364,11 @@ func (m model) stagesView() string {
 	for _, stage := range m.stages {
 		st := fmt.Sprintf("[%s] %v \t\t", stage.nickname, stage.value)
 
-		stageStyle := lipgloss.NewStyle().
+		style := stageStyle.
 			Width(m.width / len(m.stages)).
-			AlignHorizontal(lipgloss.Center).
-			Foreground(lipgloss.Color("15")).
 			Background(lipgloss.Color(stage.color))
 
-		s += stageStyle.Render(st)
+		s += style.Render(st)
 	}
 	s += "\n\n"
 	return s
