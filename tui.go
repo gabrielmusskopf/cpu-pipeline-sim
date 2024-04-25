@@ -132,7 +132,7 @@ func initModel(pipe Pipeline, regs map[string]int8) model {
 	ti := textinput.New()
 	ti.CharLimit = 5
 	ti.Width = 20
-    ti.PromptStyle.Background(lipgloss.Color("5"))
+	ti.PromptStyle.Background(lipgloss.Color("5"))
 
 	vp := viewport.New(150, 15)
 	vp.SetContent("Messages")
@@ -310,7 +310,7 @@ func (m model) View() string {
 	return sb.String()
 }
 func (m model) informationView() string {
-    s := "Autoplay: "
+	s := "Autoplay: "
 	if m.autoplay {
 		s += activeStyle.Render(fmt.Sprintf("on [%v] ", m.autoplayDelay))
 	} else {
@@ -331,7 +331,7 @@ func (m model) informationView() string {
 func (m model) registersView() string {
 	registerStyle := lipgloss.NewStyle().Width(m.width / len(m.registers))
 
-    s := "Nome\t"
+	s := "Nome\t"
 	for i := 0; i < len(m.registers); i++ {
 		name := fmt.Sprintf("R%d", i)
 		value := fmt.Sprintf("R%02d  ", i)
@@ -358,10 +358,10 @@ func (m model) registersView() string {
 }
 
 func (m model) stagesView() string {
-    s := m.headerView("Estágios") + "\n\n"
+	s := m.headerView("Estágios") + "\n\n"
 
 	for _, stage := range m.stages {
-        st := fmt.Sprintf("[%s] %v \t\t", stage.nickname, stage.value)
+		st := fmt.Sprintf("[%s] %v \t\t", stage.nickname, stage.value)
 
 		stageStyle := lipgloss.NewStyle().
 			Width(m.width / len(m.stages)).
@@ -389,7 +389,7 @@ func (m model) footerView() string {
 
 func RunCmd(pipe Pipeline, regs map[string]int8, events chan interface{}) {
 
-	p := tea.NewProgram(initModel(pipe, regs), tea.WithAltScreen())
+	p := tea.NewProgram(initModel(pipe, regs))
 
 	if _, err := p.Run(); err != nil {
 		fmt.Println("could not start program:", err)

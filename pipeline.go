@@ -1,9 +1,6 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
-	"io"
 	"log"
 	"os"
 	"strings"
@@ -18,30 +15,28 @@ type Pipeline interface {
 }
 
 type PipelineFile struct {
-	File   []byte
+	Lines  []string
 	PC     int
 	Labels map[string]int // Label: PC
-	Lines  int
 	In     chan int
 	Out    chan *Instruction
 	s      []*Stage
 }
 
 func NewPipeline(filename string) *PipelineFile {
-	file, err := os.Open(filename)
+	b, err := os.ReadFile(filename)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer file.Close()
 
-	b, err := io.ReadAll(file)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// For some reason, bytes to string cast cause an extra '\n'
+	content, _ := strings.CutSuffix(string(b), "\n")
+	lines := strings.Split(content, "\n")
+
 	pipeline := &PipelineFile{
-		File: b,
-		PC:   0,
-		In:   make(chan int),
+		Lines: lines,
+		PC:    0,
+		In:    make(chan int),
 	}
 
 	pipeline.ParseFile()
@@ -64,24 +59,19 @@ func NewPipeline(filename string) *PipelineFile {
 }
 
 func (p *PipelineFile) ParseFile() {
-	lines := 0
 	labels := make(map[string]int)
 
-	reader := bytes.NewReader(p.File)
-	scan := bufio.NewScanner(reader)
-	for scan.Scan() {
-		lines++
-		lineParts := strings.Split(scan.Text(), " ")
+	for i, line := range p.Lines {
+		lineParts := strings.Split(line, " ")
 		key := lineParts[0]
 
 		if !IsOpcode(key) {
-			labels[key] = lines
+			labels[key] = i + 1
 			Debug("Parsed [%s: %d] constant\n", key, labels[key])
 		}
 	}
 
 	p.Labels = labels
-	p.Lines = lines
 }
 
 func (p *PipelineFile) Start() {
@@ -92,7 +82,7 @@ func (p *PipelineFile) Start() {
 	}()
 
 	go func() {
-		for p.PC != p.Lines {
+		for p.PC != len(p.Lines) {
 			p.PC++
 			p.In <- p.PC
 			Debug("Send instruction from PC %d\n", p.PC)
@@ -105,12 +95,10 @@ func (p *PipelineFile) Start() {
 }
 
 func (p *PipelineFile) Read(num int) string {
-	reader := bytes.NewReader(p.File)
-	sc := bufio.NewScanner(reader)
-	for i := 1; i <= num; i++ {
-		sc.Scan()
+	if num > len(p.Lines) {
+		return ""
 	}
-	return sc.Text()
+	return p.Lines[num-1]
 }
 
 func (p *PipelineFile) Label(name string) (int, bool) {
@@ -239,8 +227,8 @@ func (p *PipelineFile) executeAddCalc(in chan *Instruction) chan *Instruction {
 
 			switch instruction.Opcode {
 			case HALT:
-                Debug("HALT!\n")
-                events<-quitMsg{}
+				Debug("HALT!\n")
+				events <- quitMsg{}
 			case ADDI:
 				AddiOperation(instruction, p)
 			case ADD:
