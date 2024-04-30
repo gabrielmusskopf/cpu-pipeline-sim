@@ -104,6 +104,7 @@ type model struct {
 	help          help.Model
 	askParams     bool
 	input         textinput.Model
+	clocks        int
 	autoplay      bool
 	autoplayDelay time.Duration
 	autoplayDone  chan bool
@@ -209,6 +210,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.messagesView.SetContent(strings.Join(m.messages, ""))
 
 	case toggleStagesMsg:
+		m.clocks++
 		pipeline.Broadcast('k') //TODO: Alterar para bool ou struct{}
 
 	case tea.WindowSizeMsg:
@@ -324,7 +326,8 @@ func (m model) informationView() string {
 	} else {
 		s += inactiveStyle.Render("   off")
 	}
-	s += "\n\n"
+
+	s += fmt.Sprintf("\nClocks:   %d\n\n", m.clocks)
 
 	return s
 }
