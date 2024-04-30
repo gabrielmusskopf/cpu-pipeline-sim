@@ -261,7 +261,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.autoplay {
 				m.autoplayDone <- true
 				m.autoplay = false
-				Debug("Dectivating autoplay mode\n")
+				Debug("Deactivating autoplay mode\n")
 			} else {
 				m.askParams = true
 				m.input.Placeholder = "Duration"
@@ -278,7 +278,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 	var sb strings.Builder
 
-	sb.WriteString("Simulador pipeline MIPS\n\n")
+	sb.WriteString("MIPS pipeline simulator\n\n")
 
 	// Informações gerais
 	sb.WriteString(m.informationView())
@@ -290,7 +290,7 @@ func (m model) View() string {
 	}
 
 	// Registradores
-	sb.WriteString(m.headerView("Registradores") + "\n")
+	sb.WriteString(m.headerView("Registers") + "\n")
 	sb.WriteString(m.registersView())
 	sb.WriteString("\n\n")
 
@@ -332,7 +332,7 @@ func (m model) informationView() string {
 func (m model) registersView() string {
 	registerStyle := lipgloss.NewStyle().Width(m.width / len(m.registers))
 
-	s := "Nome\t"
+	s := "Name\t"
 	for i := 0; i < len(m.registers); i++ {
 		name := fmt.Sprintf("R%d", i)
 		value := fmt.Sprintf("R%02d  ", i)
@@ -344,7 +344,7 @@ func (m model) registersView() string {
 	}
 	s += "\n"
 
-	s += "Valor\t"
+	s += "Value\t"
 	for i := 0; i < len(m.registers); i++ {
 		name := fmt.Sprintf("R%d", i)
 		value := fmt.Sprintf("%3d  ", m.registers[name])
@@ -359,7 +359,7 @@ func (m model) registersView() string {
 }
 
 func (m model) stagesView() string {
-	s := m.headerView("Estágios") + "\n\n"
+	s := m.headerView("Stages") + "\n\n"
 
 	for _, stage := range m.stages {
 		st := fmt.Sprintf("[%s] %v \t\t", stage.nickname, stage.value)
@@ -375,7 +375,7 @@ func (m model) stagesView() string {
 }
 
 func (m model) eventsView() string {
-	s := m.headerView("Eventos") + "\n"
+	s := m.headerView("Events") + "\n"
 	filtered := make([]string, 0)
 	for _, message := range m.messages {
 		if debug || !strings.HasPrefix(message, "DEBUG") {
