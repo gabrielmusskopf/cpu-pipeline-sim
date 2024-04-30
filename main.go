@@ -30,15 +30,6 @@ func Debug(format string, v ...any) {
 var numRegisters = 32
 var registers map[string]int8
 
-func updateRegister(name string, value int8) {
-	_, ok := registers[name]
-	if !ok {
-		return
-	}
-	registers[name] = value
-	events <- registerUpdatedMsg{name: name, value: value}
-}
-
 func main() {
 	registers = make(map[string]int8)
 	for i := 0; i < numRegisters; i++ {

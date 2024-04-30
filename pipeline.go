@@ -139,14 +139,9 @@ func (p *PipelineFile) instructionFetch(in chan int) chan string {
 				value:    pc,
 			}
 
-			for {
-				select {
-				case <-s.UserChan:
-					out <- instruction
-					s.IsActive = false
-				}
-				break
-			}
+			<-s.UserChan
+			out <- instruction
+			s.IsActive = false
 		}
 		Debug("%s will not recieve anything else\n", s.Name)
 		close(out)
@@ -172,15 +167,10 @@ func (p *PipelineFile) decodeInstruction(in chan string) chan *Instruction {
 				value:    instruction,
 			}
 
-			for {
-				select {
-				case <-s.UserChan:
-					out <- instruction
-					s.CurrInstruction = nil
-					s.IsActive = false
-				}
-				break
-			}
+			<-s.UserChan
+			out <- instruction
+			s.CurrInstruction = nil
+			s.IsActive = false
 		}
 		Debug("%s will not recieve anything else\n", s.Name)
 		close(out)
@@ -248,15 +238,10 @@ func (p *PipelineFile) executeAddCalc(in chan *Instruction) chan *Instruction {
 				value:    instruction,
 			}
 
-			for {
-				select {
-				case <-s.UserChan:
-					out <- instruction
-					s.CurrInstruction = nil
-					s.IsActive = false
-				}
-				break
-			}
+			<-s.UserChan
+			out <- instruction
+			s.CurrInstruction = nil
+			s.IsActive = false
 		}
 		Debug("%s will not recieve anything else\n", s.Name)
 		close(out)
@@ -279,15 +264,10 @@ func (p *PipelineFile) memoryAccess(in chan *Instruction) chan *Instruction {
 				value:    instruction,
 			}
 
-			for {
-				select {
-				case <-s.UserChan:
-					out <- instruction
-					s.CurrInstruction = nil
-					s.IsActive = false
-				}
-				break
-			}
+			<-s.UserChan
+			out <- instruction
+			s.CurrInstruction = nil
+			s.IsActive = false
 		}
 		Debug("%s will not recieve anything else\n", s.Name)
 		close(out)
@@ -311,15 +291,10 @@ func (p *PipelineFile) writeBack(in chan *Instruction) chan *Instruction {
 				value:    instruction,
 			}
 
-			for {
-				select {
-				case <-s.UserChan:
-					out <- instruction
-					s.CurrInstruction = nil
-					s.IsActive = false
-				}
-				break
-			}
+			<-s.UserChan
+			out <- instruction
+			s.CurrInstruction = nil
+			s.IsActive = false
 		}
 		Debug("%s will not recieve anything else\n", s.Name)
 		close(out)

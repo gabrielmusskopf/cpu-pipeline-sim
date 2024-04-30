@@ -13,6 +13,15 @@ func getRegisterName(r string) string {
 	return fmt.Sprintf("R%s", r)
 }
 
+func updateRegister(name string, value int8) {
+	_, ok := registers[name]
+	if !ok {
+		return
+	}
+	registers[name] = value
+	events <- registerUpdatedMsg{name: name, value: value}
+}
+
 // "Jump" to PC and get the value
 func spy(pc int, pipe Pipeline) int8 {
 	line := pipe.Read(pc)
@@ -95,7 +104,7 @@ func SubiOperation(i *Instruction, pipe Pipeline) error {
 	} else {
 		op3 = registers[getRegisterName(i.Op3)]
 	}
-    updateRegister(i.Op2, op1 - op3)
+	updateRegister(i.Op2, op1-op3)
 	return nil
 }
 
@@ -122,7 +131,7 @@ func SubOperation(i *Instruction, pip Pipeline) error {
 		return fmt.Errorf("ERROR: Register %s does not exist\n", i.Op1)
 	}
 
-    updateRegister(op1Nick, op2 - op3)
+	updateRegister(op1Nick, op2-op3)
 	return nil
 }
 
