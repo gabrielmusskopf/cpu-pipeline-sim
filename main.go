@@ -14,16 +14,16 @@ func joinMessage(category string, format string, v ...any) {
 }
 
 func Info(format string, v ...any) {
-	joinMessage("INFO", format, v)
+	joinMessage("INFO", format, v...)
 }
 
 func Error(format string, v ...any) {
-	joinMessage("ERROR", format, v)
+	joinMessage("ERROR", format, v...)
 }
 
 func Debug(format string, v ...any) {
 	if debug {
-		joinMessage("DEBUG", format, v)
+		joinMessage("DEBUG", format, v...)
 	}
 }
 
