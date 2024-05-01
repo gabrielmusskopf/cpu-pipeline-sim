@@ -5,7 +5,7 @@ sendo o primeiro reservado para simular a memória, e 5 estágios.
 
 # Quickstart
 
-Para compilar e iniciar
+Para compilar é necessário ter [go](https://go.dev/doc/install) instalado. Basta executar:
 ```shell
 make run
 ```
